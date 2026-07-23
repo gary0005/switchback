@@ -1,0 +1,63 @@
+---
+- name: Add Angie signing key
+  ansible.builtin.get_url:
+    url: https://angie.software/keys/angie-signing.gpg
+    dest: /etc/apt/trusted.gpg.d/angie-signing.gpg
+    mode: "0644"
+
+- name: Add Angie repository
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb https://download.angie.software/angie/{{ ansible_distribution | lower }}/
+      {{ ansible_distribution_release }} main
+    filename: angie
+    state: present
+
+- name: Install Angie
+  ansible.builtin.apt:
+    name: angie
+    state: present
+    update_cache: true
+
+- name: Deploy main config
+  ansible.builtin.template:
+    src: angie.conf.j2
+    dest: /etc/angie/angie.conf
+    mode: "0644"
+  notify: Reload angie
+
+- name: Deploy site config
+  ansible.builtin.template:
+    src: site.conf.j2
+    dest: /etc/angie/http.d/vpn.conf
+    mode: "0644"
+  notify: Reload angie
+
+# A separate task rather than `validate:` — that parameter checks the
+# temporary file, which angie.conf does not include yet, so it would
+# always pass.
+- name: Verify angie configuration
+  ansible.builtin.command: angie -t
+  changed_when: false
+
+- name: Create web roots
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - /var/www/decoy
+    - /var/www/sub
+
+# An empty document root is the cheapest way to fail an active probe.
+- name: Deploy decoy site
+  ansible.builtin.template:
+    src: decoy-index.html.j2
+    dest: /var/www/decoy/index.html
+    mode: "0644"
+
+- name: Enable angie
+  ansible.builtin.service:
+    name: angie
+    enabled: true
+    state: started

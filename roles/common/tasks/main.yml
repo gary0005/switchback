@@ -1,0 +1,38 @@
+---
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - unzip
+      - chrony
+      - nftables
+      - python3
+      - unattended-upgrades
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# Reality and VLESS depend on the clock: more than a couple of minutes of
+# drift breaks the handshake. This is the number one cause of
+# "everything suddenly stopped working".
+- name: Ensure chrony is running
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Tune sysctl for BBR and QUIC
+  ansible.builtin.template:
+    src: 99-vpn.conf.j2
+    dest: /etc/sysctl.d/99-vpn.conf
+    mode: "0644"
+  notify: Reload sysctl
+
+- name: Enable unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";

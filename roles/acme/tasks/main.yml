@@ -1,0 +1,43 @@
+---
+# dns-01 rather than http-01: the certificate is issued before the domain
+# takes any traffic, and port 80 never has to be opened.
+- name: Install certbot with DNS plugin
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - "python3-certbot-dns-{{ acme_dns_provider }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Write DNS provider credentials
+  ansible.builtin.template:
+    src: "{{ acme_dns_provider }}.ini.j2"
+    dest: "/etc/letsencrypt/{{ acme_dns_provider }}.ini"
+    mode: "0600"
+
+- name: Request certificate
+  ansible.builtin.command:
+    argv:
+      - certbot
+      - certonly
+      - --non-interactive
+      - --agree-tos
+      - -m
+      - "{{ acme_email }}"
+      - "--dns-{{ acme_dns_provider }}"
+      - "--dns-{{ acme_dns_provider }}-credentials"
+      - "/etc/letsencrypt/{{ acme_dns_provider }}.ini"
+      - "--dns-{{ acme_dns_provider }}-propagation-seconds"
+      - "30"
+      - -d
+      - "{{ public_domain }}"
+    creates: "/etc/letsencrypt/live/{{ public_domain }}/fullchain.pem"
+
+- name: Reload angie after renewal
+  ansible.builtin.copy:
+    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-angie.sh
+    mode: "0755"
+    content: |
+      #!/bin/sh
+      systemctl reload angie 2>/dev/null || true

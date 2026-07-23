@@ -1,0 +1,29 @@
+---
+# Subscriptions are static files. No backend: nothing to exploit, nothing
+# to monitor, and every angie node serves the identical set.
+- name: Render subscription payloads
+  ansible.builtin.template:
+    src: sub.txt.j2
+    dest: "/var/www/sub/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}"
+    mode: "0644"
+  loop: "{{ users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Render human-readable pages
+  ansible.builtin.template:
+    src: "index.{{ sub_page_lang }}.html.j2"
+    dest: "/var/www/sub/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}.html"
+    mode: "0644"
+  loop: "{{ users }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Show subscription links
+  ansible.builtin.debug:
+    msg: >-
+      {{ item.name }} ({{ item.tier }}):
+      https://{{ public_domain }}{{ sub_prefix }}/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}
+  loop: "{{ users }}"
+  loop_control:
+    label: "{{ item.name }}"

@@ -1,0 +1,55 @@
+{%- set token = ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] -%}
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Подписка</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto;
+         padding: 0 1.25rem; line-height: 1.6; color: #1a1a1a; }
+  code { background: #f3f3f1; padding: .15rem .35rem; border-radius: 4px;
+         word-break: break-all; font-size: .9em; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; }
+  button { border: 1px solid #ccc; background: #fff; border-radius: 6px;
+           padding: .3rem .7rem; cursor: pointer; font: inherit; }
+  small { color: #666; }
+</style>
+</head>
+<body>
+<h1>Подписка</h1>
+
+<p>Вставьте эту ссылку в клиент как <em>subscription</em> — конфиги обновятся сами.</p>
+<div class="row">
+  <code id="sub">https://{{ public_domain }}{{ sub_prefix }}/{{ token }}</code>
+  <button onclick="copy('sub')">Копировать</button>
+</div>
+
+<p><small>
+  Клиенты: v2rayNG или Happ (Android), Streisand или Shadowrocket (iOS),
+  Nekoray или v2rayN (десктоп).
+</small></p>
+
+<h2>Что внутри</h2>
+<ul>
+{% if item.tier in tier_hop2 %}
+  <li><b>2hop</b> — основная схема, её и используйте по умолчанию.</li>
+{% endif %}
+{% if item.tier in tier_hop1 %}
+  <li><b>1hop</b> — тестовая, короче маршрут, но выходной IP тот же, что и вход.</li>
+{% endif %}
+{% if item.tier in tier_hop3 %}
+  <li><b>3hop</b> — вход через российскую ноду; медленнее, но полезно там,
+      где прямой доступ к зарубежному IP не проходит.</li>
+{% endif %}
+  <li>Каждая схема идёт в двух вариантах: <b>h2</b> и <b>h3</b>.
+      h3 быстрее на плохой сети, h2 надёжнее там, где режут UDP.</li>
+</ul>
+
+<script>
+function copy(id) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+---
+# ansible-vault encrypt --output inventory/group_vars/all/vault.yml vault.yml.example
+#
+# The ONE secret of the whole deployment. Everything else derives from it.
+# Generate with: openssl rand -hex 32
+vault_seed: "REPLACE_ME_openssl_rand_hex_32"
+
+# Cloudflare API token with Zone:DNS:Edit on the relevant zone (for dns-01)
+vault_cf_api_token: "REPLACE_ME"

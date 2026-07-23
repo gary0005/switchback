@@ -1,0 +1,46 @@
+#!/usr/sbin/nft -f
+# {{ ansible_managed }}
+flush ruleset
+
+table inet filter {
+{% set peers = (groups['eu'] | default([])) | difference([inventory_hostname]) %}
+{% if inventory_hostname in groups['eu'] | default([]) and peers | length > 0 %}
+    # Offshore nodes only. The domestic entry node is not in the eu group,
+    # so it can never land here — "domestic egress hits angie only" is
+    # structural, not a matter of operator discipline.
+    set eu_peers {
+        type ipv4_addr
+        elements = { {{ peers | map('extract', hostvars, 'ansible_host') | join(', ') }} }
+    }
+{% endif %}
+
+    chain input {
+        type filter hook input priority 0; policy drop;
+
+        ct state established,related accept
+        ct state invalid drop
+        iif lo accept
+        ip protocol icmp accept
+        ip6 nexthdr ipv6-icmp accept
+
+{% if ssh_allowed_cidrs | length > 0 %}
+        ip saddr { {{ ssh_allowed_cidrs | join(', ') }} } tcp dport 22 accept
+{% else %}
+        tcp dport 22 accept
+{% endif %}
+
+{% if inventory_hostname in (groups['edge'] | default([])) + (groups['ru'] | default([])) %}
+        # User ingress: HTTP/2 over TCP and HTTP/3 over QUIC.
+        tcp dport { 80, 443 } accept
+        udp dport 443 accept
+{% endif %}
+
+{% if inventory_hostname in groups['eu'] | default([]) and peers | length > 0 %}
+        # Reality link between offshore nodes on a random port.
+        tcp dport {{ xray_relay_port | int }} ip saddr @eu_peers accept
+{% endif %}
+    }
+
+    chain forward { type filter hook forward priority 0; policy drop; }
+    chain output  { type filter hook output  priority 0; policy accept; }
+}

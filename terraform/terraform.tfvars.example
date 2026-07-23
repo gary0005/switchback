@@ -1,0 +1,7 @@
+cf_api_token = "REPLACE_ME"
+cf_zone_id   = "REPLACE_ME"
+
+nodes = {
+  "e1" = "203.0.113.10"
+  "r1" = "198.51.100.5"
+}

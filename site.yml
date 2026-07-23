@@ -1,0 +1,34 @@
+---
+# Order matters: exit nodes come up first so edge has somewhere to route to.
+# There are no cross-host fact dependencies — every key is derived from
+# vault_seed, so any play can be run with --limit independently.
+
+- name: Exit nodes (xray only, one random port exposed)
+  hosts: exit
+  become: true
+  roles:
+    - common
+    - xray
+    - firewall
+
+- name: Edge nodes (angie + xray + subscriptions)
+  hosts: edge
+  become: true
+  roles:
+    - common
+    - acme
+    - xray
+    - angie
+    - subscription
+    - firewall
+
+- name: Entry nodes (ingress for the 3-hop chain)
+  hosts: ru
+  become: true
+  roles:
+    - common
+    - acme
+    - xray
+    - angie
+    - subscription
+    - firewall

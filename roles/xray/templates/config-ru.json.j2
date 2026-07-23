@@ -1,0 +1,64 @@
+{%- set c3 = [] -%}
+{%- for u in users if u.tier in tier_hop3 -%}
+{%-   set _ = c3.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- endfor -%}
+{
+  "log": { "loglevel": "warning", "access": "none" },
+
+  "inbounds": [
+    {
+      "tag": "in-hop3",
+      "listen": "{{ xray_socket_dir }}/hop3.sock,0666",
+      "protocol": "vless",
+      "settings": { "clients": {{ c3 | to_json }}, "decryption": "none" },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "{{ xray_path_hop3 }}", "mode": "packet-up" }
+      }
+    }
+  ],
+
+  "outbounds": [
+{# The entry node reaches out over exactly the same XHTTP/443 a regular   #}
+{# client uses. That is what enforces "domestic egress hits angie only".   #}
+{% for h in groups['edge'] | default([]) %}
+    {
+      "tag": "to-edge-{{ h }}",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [{
+          "address": "{{ hostvars[h].public_domain }}",
+          "port": 443,
+          "users": [{ "id": "{{ node_link_uuid }}", "encryption": "none" }]
+        }]
+      },
+      "streamSettings": {
+        "network": "xhttp",
+        "security": "tls",
+        "tlsSettings": {
+          "serverName": "{{ hostvars[h].public_domain }}",
+          "alpn": ["h2"],
+          "fingerprint": "chrome"
+        },
+        "xhttpSettings": {
+          "host": "{{ hostvars[h].public_domain }}",
+          "path": "{{ hostvars[h].xray_path_hop2 }}",
+          "mode": "packet-up"
+        }
+      }
+    },
+{% endfor %}
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+
+  "routing": {
+    "domainStrategy": "AsIs",
+    "balancers": [
+      { "tag": "edges", "selector": ["to-edge-"] }
+    ],
+    "rules": [
+      { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" },
+      { "type": "field", "inboundTag": ["in-hop3"], "balancerTag": "edges" }
+    ]
+  }
+}

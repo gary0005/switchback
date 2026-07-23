@@ -1,0 +1,78 @@
+{#- Client lists are built as lists and piped through to_json: always valid JSON -#}
+{%- set c1 = [] -%}
+{%- for u in users if u.tier in tier_hop1 -%}
+{%-   set _ = c1.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- endfor -%}
+{%- set c2 = [] -%}
+{%- for u in users if u.tier in tier_hop2 -%}
+{%-   set _ = c2.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- endfor -%}
+{#- Service account for the inbound link from the domestic entry node -#}
+{%- set _ = c2.append({'id': node_link_uuid, 'email': 'node-ru@internal', 'level': 0}) -%}
+{
+  "log": { "loglevel": "warning", "access": "none" },
+
+  "inbounds": [
+    {
+      "tag": "in-hop1",
+      "listen": "{{ xray_socket_dir }}/hop1.sock,0666",
+      "protocol": "vless",
+      "settings": { "clients": {{ c1 | to_json }}, "decryption": "none" },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "{{ xray_path_hop1 }}", "mode": "packet-up" }
+      }
+    },
+    {
+      "tag": "in-hop2",
+      "listen": "{{ xray_socket_dir }}/hop2.sock,0666",
+      "protocol": "vless",
+      "settings": { "clients": {{ c2 | to_json }}, "decryption": "none" },
+      "streamSettings": {
+        "network": "xhttp",
+        "xhttpSettings": { "path": "{{ xray_path_hop2 }}", "mode": "packet-up" }
+      }
+    }
+  ],
+
+  "outbounds": [
+    { "tag": "direct", "protocol": "freedom" },
+{% for h in groups['exit'] | default([]) %}
+    {
+      "tag": "to-exit-{{ h }}",
+      "protocol": "vless",
+      "settings": {
+        "vnext": [{
+          "address": "{{ hostvars[h].ansible_host }}",
+          "port": {{ hostvars[h].xray_relay_port | int }},
+          "users": [{ "id": "{{ relay_uuid }}", "encryption": "none", "flow": "xtls-rprx-vision" }]
+        }]
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "serverName": "{{ reality_server_names[0] }}",
+          "fingerprint": "chrome",
+          "publicKey": "{{ reality[h][1] }}",
+          "shortId": "{{ hostvars[h].reality_short_id }}"
+        }
+      }
+    },
+{% endfor %}
+    { "tag": "block", "protocol": "blackhole" }
+  ],
+
+  "routing": {
+    "domainStrategy": "AsIs",
+    "balancers": [
+      { "tag": "exits", "selector": ["to-exit-"] }
+    ],
+    "rules": [
+      { "type": "field", "protocol": ["bittorrent"], "outboundTag": "block" },
+      { "type": "field", "ip": ["geoip:private"], "outboundTag": "block" },
+      { "type": "field", "inboundTag": ["in-hop1"], "outboundTag": "direct" },
+      { "type": "field", "inboundTag": ["in-hop2"], "balancerTag": "exits" }
+    ]
+  }
+}

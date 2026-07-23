@@ -1,0 +1,55 @@
+{%- set token = ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] -%}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subscription</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto;
+         padding: 0 1.25rem; line-height: 1.6; color: #1a1a1a; }
+  code { background: #f3f3f1; padding: .15rem .35rem; border-radius: 4px;
+         word-break: break-all; font-size: .9em; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; }
+  button { border: 1px solid #ccc; background: #fff; border-radius: 6px;
+           padding: .3rem .7rem; cursor: pointer; font: inherit; }
+  small { color: #666; }
+</style>
+</head>
+<body>
+<h1>Subscription</h1>
+
+<p>Paste this link into your client as a <em>subscription</em> — configs will keep themselves up to date.</p>
+<div class="row">
+  <code id="sub">https://{{ public_domain }}{{ sub_prefix }}/{{ token }}</code>
+  <button onclick="copy('sub')">Copy</button>
+</div>
+
+<p><small>
+  Clients: v2rayNG or Happ (Android), Streisand or Shadowrocket (iOS),
+  Nekoray or v2rayN (desktop).
+</small></p>
+
+<h2>What is inside</h2>
+<ul>
+{% if item.tier in tier_hop2 %}
+  <li><b>2hop</b> — the main chain; use this one by default.</li>
+{% endif %}
+{% if item.tier in tier_hop1 %}
+  <li><b>1hop</b> — for testing: shorter route, but the exit IP is the same as the entry IP.</li>
+{% endif %}
+{% if item.tier in tier_hop3 %}
+  <li><b>3hop</b> — enters via the domestic node; slower, but useful where a
+      direct connection to an offshore IP does not get through.</li>
+{% endif %}
+  <li>Every chain ships in two flavours: <b>h2</b> and <b>h3</b>. h3 is faster on
+      a poor connection, h2 is more reliable where UDP is throttled.</li>
+</ul>
+
+<script>
+function copy(id) {
+  navigator.clipboard.writeText(document.getElementById(id).textContent);
+}
+</script>
+</body>
+</html>

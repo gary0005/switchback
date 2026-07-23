@@ -1,0 +1,28 @@
+{#- Config matrix: (chain) x (h2, h3). The tier decides which chains apply. -#}
+{%- set uuid = (vault_seed ~ ':user:' ~ item.name ~ ':' ~ item.rot) | to_uuid -%}
+{%- set uris = [] -%}
+{%- for h in groups['edge'] | default([]) -%}
+{%-   set dom = hostvars[h].public_domain -%}
+{%-   if item.tier in tier_hop1 -%}
+{%-     for alpn in ['h2', 'h3'] -%}
+{%-       set p = hostvars[h].xray_path_hop1 | replace('/', '%2F') -%}
+{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-1hop-' ~ alpn) -%}
+{%-     endfor -%}
+{%-   endif -%}
+{%-   if item.tier in tier_hop2 -%}
+{%-     for alpn in ['h2', 'h3'] -%}
+{%-       set p = hostvars[h].xray_path_hop2 | replace('/', '%2F') -%}
+{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-2hop-' ~ alpn) -%}
+{%-     endfor -%}
+{%-   endif -%}
+{%- endfor -%}
+{%- if item.tier in tier_hop3 -%}
+{%-   for h in groups['ru'] | default([]) -%}
+{%-     set dom = hostvars[h].public_domain -%}
+{%-     for alpn in ['h2', 'h3'] -%}
+{%-       set p = hostvars[h].xray_path_hop3 | replace('/', '%2F') -%}
+{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-3hop-' ~ alpn) -%}
+{%-     endfor -%}
+{%-   endfor -%}
+{%- endif -%}
+{{ uris | join('\n') | b64encode }}

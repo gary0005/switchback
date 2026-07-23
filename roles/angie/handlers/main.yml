@@ -1,0 +1,5 @@
+---
+- name: Reload angie
+  ansible.builtin.service:
+    name: angie
+    state: reloaded

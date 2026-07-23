@@ -1,0 +1,69 @@
+---
+# ---------------------------------------------------------------------------
+# Deterministic secret derivation
+# ---------------------------------------------------------------------------
+# Nothing is kept in state: paths, ports, UUIDs, keys and subscription tokens
+# are all derived from a single vault_seed. The playbook is idempotent and
+# fully reproducible from the repository alone.
+# Rotation: bump a user's `rot` (targeted) or vault_seed (everything at once).
+
+_host_seed: "{{ vault_seed }}:{{ inventory_hostname }}"
+
+# --- XHTTP paths (one per chain) ------------------------------------------
+xray_path_hop1: "/{{ ((_host_seed ~ ':path:hop1') | hash('sha256'))[:14] }}"
+xray_path_hop2: "/{{ ((_host_seed ~ ':path:hop2') | hash('sha256'))[:14] }}"
+xray_path_hop3: "/{{ ((_host_seed ~ ':path:hop3') | hash('sha256'))[:14] }}"
+
+# --- Secret prefix angie serves subscriptions under ------------------------
+sub_prefix: "/{{ ((_host_seed ~ ':subprefix') | hash('sha256'))[:12] }}"
+
+# --- Random port for the reality link between offshore nodes ---------------
+xray_relay_port: >-
+  {{ 20000 + ((((_host_seed ~ ':relayport') | hash('sha256'))[:6] | int(base=16)) % 40000) }}
+
+# --- Reality: private key as hex, public key computed on the host ----------
+# xray x25519 can derive the public key from the private one, so edge computes
+# the exit node's key locally — no cross-host facts, no play ordering needed.
+reality_priv_hex: "{{ (_host_seed ~ ':reality:priv') | hash('sha256') }}"
+reality_short_id: "{{ ((_host_seed ~ ':reality:sid') | hash('sha256'))[:8] }}"
+reality_dest: "www.microsoft.com:443"
+reality_server_names:
+  - www.microsoft.com
+
+# --- Service account UUID for the entry -> edge link -----------------------
+node_link_uuid: "{{ (vault_seed ~ ':node:ru-to-edge') | to_uuid }}"
+# --- Service account UUID for the edge -> exit reality link ----------------
+relay_uuid: "{{ (vault_seed ~ ':node:edge-to-exit') | to_uuid }}"
+
+# ---------------------------------------------------------------------------
+# Users
+# ---------------------------------------------------------------------------
+# tier: main — main chain only (2 hops)
+# tier: all  — all three chains
+# rot        — rotation counter: bump it to reissue the UUID and the link
+users:
+  - { name: alice, tier: all,  rot: 1 }
+  - { name: bob,   tier: main, rot: 1 }
+
+# Which tiers may use which chain. Tiers are enforced server side, in the
+# inbound client lists — not merely by omitting configs from a subscription.
+tier_hop1: [all]
+tier_hop2: [all, main]
+tier_hop3: [all]
+
+# ---------------------------------------------------------------------------
+# Versions and shared settings
+# ---------------------------------------------------------------------------
+xray_version: "25.3.6"
+xray_dir: /usr/local/etc/xray
+xray_socket_dir: /run/xray
+
+acme_email: "admin@example.com"
+acme_dns_provider: cloudflare      # dns-01, so port 80 need not be exposed
+
+# Language of the user-facing subscription page (templates/index.<lang>.html.j2).
+# Everything else in this repo is English; this is the one string set your
+# end users actually read, so set it to whatever they speak.
+sub_page_lang: en
+
+ssh_allowed_cidrs: []              # e.g. ["203.0.113.0/24"]; empty = 22 open

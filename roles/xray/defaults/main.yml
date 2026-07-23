@@ -1,0 +1,5 @@
+---
+# The host's role follows from group membership — no need to set it by hand.
+node_role: >-
+  {{ 'exit' if inventory_hostname in groups['exit'] | default([])
+     else ('ru' if inventory_hostname in groups['ru'] | default([]) else 'edge') }}

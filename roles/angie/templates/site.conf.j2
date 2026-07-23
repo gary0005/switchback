@@ -1,0 +1,63 @@
+# {{ ansible_managed }}
+
+{% if inventory_hostname in groups['edge'] | default([]) %}
+upstream xray_hop1 { server unix:{{ xray_socket_dir }}/hop1.sock; keepalive 64; }
+upstream xray_hop2 { server unix:{{ xray_socket_dir }}/hop2.sock; keepalive 64; }
+{% else %}
+upstream xray_hop3 { server unix:{{ xray_socket_dir }}/hop3.sock; keepalive 64; }
+{% endif %}
+
+server {
+    listen 443 ssl reuseport;
+    listen 443 quic reuseport;
+    listen [::]:443 ssl reuseport;
+    listen [::]:443 quic reuseport;
+
+    http2 on;
+    server_name {{ public_domain }};
+
+    ssl_certificate     /etc/letsencrypt/live/{{ public_domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ public_domain }}/privkey.pem;
+
+    add_header Alt-Svc 'h3=":443"; ma=86400' always;
+
+    # XHTTP sends bodies of unknown length — the default 1M limit tears the
+    # upload stream on the first sizeable request.
+    client_max_body_size 0;
+
+{% for hop in (['hop1', 'hop2'] if inventory_hostname in groups['edge'] | default([]) else ['hop3']) %}
+    location {{ lookup('vars', 'xray_path_' ~ hop) }} {
+        proxy_pass              http://xray_{{ hop }};
+        proxy_http_version      1.1;
+        proxy_set_header        Connection "";
+        proxy_set_header        Host $host;
+        proxy_set_header        X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header        X-Forwarded-Proto $scheme;
+        # Without these two, XHTTP simply hangs: angie buffers the stream
+        # instead of forwarding it straight through.
+        proxy_buffering         off;
+        proxy_request_buffering off;
+        proxy_read_timeout      300s;
+        proxy_send_timeout      300s;
+    }
+
+{% endfor %}
+    location {{ sub_prefix }}/ {
+        alias /var/www/sub/;
+        default_type text/plain;
+        add_header profile-update-interval "12" always;
+        add_header Cache-Control "no-store" always;
+    }
+
+    location / {
+        root /var/www/decoy;
+        index index.html;
+    }
+}
+
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 301 https://$host$request_uri;
+}

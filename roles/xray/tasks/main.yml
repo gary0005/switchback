@@ -1,0 +1,94 @@
+---
+- name: Create xray directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ xray_dir }}"
+    - /usr/local/share/xray
+
+- name: Check installed xray version
+  ansible.builtin.command: /usr/local/bin/xray version
+  register: xray_installed
+  changed_when: false
+  failed_when: false
+
+- name: Download and install xray
+  when: xray_version not in (xray_installed.stdout | default(''))
+  block:
+    - name: Fetch xray release
+      ansible.builtin.get_url:
+        url: "https://github.com/XTLS/Xray-core/releases/download/v{{ xray_version }}/Xray-linux-64.zip"
+        dest: /tmp/xray.zip
+        mode: "0644"
+
+    - name: Unpack xray
+      ansible.builtin.unarchive:
+        src: /tmp/xray.zip
+        dest: /tmp/xray-unpack
+        remote_src: true
+        creates: /tmp/xray-unpack/xray
+
+    - name: Install binary and geo data
+      ansible.builtin.copy:
+        src: "/tmp/xray-unpack/{{ item.f }}"
+        dest: "{{ item.d }}"
+        remote_src: true
+        mode: "{{ item.m }}"
+      loop:
+        - { f: xray,        d: /usr/local/bin/xray,                     m: "0755" }
+        - { f: geoip.dat,   d: /usr/local/share/xray/geoip.dat,         m: "0644" }
+        - { f: geosite.dat, d: /usr/local/share/xray/geosite.dat,       m: "0644" }
+      notify: Restart xray
+
+# ---------------------------------------------------------------------------
+# Reality keys
+# ---------------------------------------------------------------------------
+# The private key is derived deterministically from the seed; the public key
+# is computed from it by the xray binary. That lets edge compute the exit
+# node's key locally — no delegate_to, no fact cache, no play ordering.
+- name: Derive reality keypair for every offshore peer
+  ansible.builtin.shell: |
+    set -euo pipefail
+    PRIV=$(python3 -c "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" '{{ hostvars[item].reality_priv_hex }}')
+    PUB=$(/usr/local/bin/xray x25519 -i "$PRIV" | awk -F': *' 'tolower($1) ~ /public|password/ {print $2; exit}')
+    printf '%s %s\n' "$PRIV" "$PUB"
+  args:
+    executable: /bin/bash
+  register: reality_keys
+  changed_when: false
+  loop: "{{ groups['eu'] | default([]) }}"
+
+- name: Register reality keys as a lookup map
+  ansible.builtin.set_fact:
+    reality: >-
+      {{ dict(reality_keys.results
+              | map(attribute='item')
+              | zip(reality_keys.results
+                    | map(attribute='stdout')
+                    | map('split', ' ')
+                    | map('map', 'trim'))) }}
+
+- name: Deploy xray config
+  ansible.builtin.template:
+    src: "config-{{ node_role }}.json.j2"
+    dest: "{{ xray_dir }}/config.json"
+    mode: "0600"
+    validate: "/usr/local/bin/xray run -test -config %s"
+  notify: Restart xray
+
+- name: Deploy systemd unit
+  ansible.builtin.template:
+    src: xray.service.j2
+    dest: /etc/systemd/system/xray.service
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart xray
+
+- name: Enable xray
+  ansible.builtin.service:
+    name: xray
+    enabled: true
+    state: started
