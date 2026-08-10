@@ -1,0 +1,43 @@
+---
+# Shift-left: these run locally before a commit lands, and again in CI.
+# Install once with: pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+      - id: check-yaml
+        # Vault files are encrypted blobs, and the example file is a template.
+        exclude: ^inventory/group_vars/all/vault\.yml.*$
+      - id: detect-private-key
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [--strict]
+
+  - repo: https://github.com/ansible/ansible-lint
+    rev: v25.1.2
+    hooks:
+      - id: ansible-lint
+        additional_dependencies:
+          - ansible-core>=2.16
+
+  # The whole deployment derives from one vault_seed: a single plaintext leak
+  # compromises every path, port, UUID and subscription token at once.
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        # Encrypted vault payloads are high-entropy by definition, and the
+        # example file ships placeholders rather than real values.
+        exclude: ^inventory/group_vars/all/vault\.yml.*$
+
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.23.3
+    hooks:
+      - id: gitleaks

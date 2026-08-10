@@ -1,0 +1,19 @@
+---
+profile: production
+
+exclude_paths:
+  - .git/
+  - .github/
+  - terraform/
+  - inventory/group_vars/all/vault.yml
+
+# The xray config templates are JSON: a Jinja "{{ ansible_managed | comment }}"
+# header cannot be added without producing invalid JSON. Everything else that
+# can carry the header does.
+skip_list: []
+
+# Roles here are deployment-local, not Galaxy-distributed, so the namespaced
+# "collection.role" form does not apply.
+kinds:
+  - playbook: site.yml
+  - yaml: inventory/**/*.yml

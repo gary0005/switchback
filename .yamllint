@@ -1,0 +1,26 @@
+---
+extends: default
+
+ignore: |
+  .git/
+  terraform/
+  inventory/group_vars/all/vault.yml
+
+rules:
+  line-length:
+    max: 120
+    level: error
+  truthy:
+    # Enforce the YAML 1.2 spelling; "yes"/"no" are Ansible-only extensions.
+    allowed-values: ["true", "false"]
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  # Required to stay compatible with ansible-lint's own yamllint contract;
+  # without it ansible-lint disables its fix mode.
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true

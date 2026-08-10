@@ -1,6 +1,8 @@
 .DS_Store
 .vault_pass
 *.retry
+.venv/
+__pycache__/
 terraform/.terraform/
 terraform/*.tfstate*
 terraform/terraform.tfvars
