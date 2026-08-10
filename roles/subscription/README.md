@@ -1,0 +1,62 @@
+# subscription
+
+Static per-user subscription payloads and a human-readable landing page.
+
+**Outcome:** for every user, a base64 subscription file and an HTML page under `subscription_root`, named after a token derived from `vault_seed`.
+**Idempotent:** yes — same seed and same roster produce byte-identical files.
+**Atomic:** no; users are rendered one at a time.
+**Rollback:** files are backed up on change (`backup: true`). Revoking access means removing the user from the roster and re-running — the old file is not deleted automatically, so delete it from `subscription_root` as well.
+
+No backend: nothing to exploit, nothing to monitor, and every angie node serves the identical set.
+
+## The filename is the credential
+
+The token in the path *is* the user's access. That is why `subscription_show_links` defaults to `false` — printing a link writes a credential into the run log and into any CI system that captures it.
+
+The links are reproducible from the seed at any time, so nothing is lost by keeping them out of the log:
+
+```bash
+ansible-playbook site.yml --tags subscription -v \
+  -e subscription_show_links=true --ask-vault-pass
+```
+
+## Requirements
+
+* `vault_seed` from the vault.
+* The inventory must define `public_domain` and `vpn_path_hop1`..`hop3` for the edge and entry hosts, because `sub.txt.j2` reads them across plays through `hostvars`.
+* `subscription_root` must match `angie_sub_root`.
+
+## Variables
+
+Full specification with types and defaults: [`meta/argument_specs.yml`](meta/argument_specs.yml).
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `subscription_users` | `{{ vpn_users }}` | Roster of `{name, tier, rot}` |
+| `subscription_tier_hop1/2/3` | `{{ vpn_tier_hop* }}` | Which tiers may use which chain |
+| `subscription_page_lang` | `en` | Selects `templates/index.<lang>.html.j2` |
+| `subscription_show_links` | `false` | Whether to print the links during the run |
+| `subscription_root` | `/var/www/sub` | Where payloads are written |
+| `subscription_domain` | `{{ public_domain }}` | Domain the links point at |
+| `subscription_prefix` | `{{ vpn_sub_prefix }}` | Secret path prefix angie serves under |
+| `subscription_edge_group` | `edge` | Nodes serving the 1-hop and 2-hop chains |
+| `subscription_entry_group` | `ru` | Nodes serving the 3-hop chain |
+| `subscription_update_interval` | `12` | Refresh hint for clients, in hours |
+
+## Example
+
+```yaml
+- name: Publish subscriptions
+  ansible.builtin.import_role:
+    name: subscription
+  vars:
+    subscription_page_lang: ru
+```
+
+## Adding a language
+
+Add `templates/index.<lang>.html.j2` and set `subscription_page_lang`. Everything else in this repository is English; this is the one string set your end users actually read.
+
+## Known gap
+
+`Subscription-Userinfo` is not populated. Doing so needs the xray stats API and a small collector.
