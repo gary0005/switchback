@@ -1,0 +1,60 @@
+---
+# Name angie terminates TLS for. Defaults to the node's inventory
+# `public_domain`, which is what the acme role requests the certificate for.
+angie_domain: "{{ public_domain }}"
+
+angie_conf_dir: /etc/angie
+angie_cert_dir: "/etc/letsencrypt/live/{{ angie_domain }}"
+
+# An empty document root is the cheapest way to fail an active probe, so the
+# decoy is not decoration.
+angie_decoy_root: /var/www/decoy
+
+# Where the subscription role drops its rendered payloads. Must match
+# `subscription_root`.
+angie_sub_root: /var/www/sub
+
+angie_worker_connections: 16384
+angie_keepalive_timeout: 65
+angie_upstream_keepalive: 64
+
+# XHTTP sends bodies of unknown length; the default 1M ceiling tears the
+# upload stream on the first sizeable request.
+angie_client_max_body_size: 0
+
+# XHTTP holds long-lived streams.
+angie_proxy_timeout: 300s
+
+# Access logging is off on purpose: a node should not retain a record of who
+# passed through it and when.
+angie_access_log: false
+
+# --- Repository ------------------------------------------------------------
+angie_repo_key_url: https://angie.software/keys/angie-signing.gpg
+angie_repo_keyring: /usr/share/keyrings/angie-signing.gpg
+angie_repo_base_url: https://download.angie.software/angie
+
+# SHA256 of the signing key, in `get_url` format, e.g. "sha256:9f86d081...".
+# Empty means the key is trusted on first use — set it to pin the repository.
+angie_repo_key_checksum: ""
+
+# --- Inventory coupling ----------------------------------------------------
+# Group name is a parameter rather than a literal so the role can describe
+# more than one topology per inventory. Edge nodes front two chains (hop1 and
+# hop2); everything else fronts hop3.
+angie_edge_group: edge
+
+# Deployment values this role reads for its own host. Aliases of the shared
+# `vpn_*` inventory variables.
+angie_socket_dir: "{{ vpn_socket_dir }}"
+angie_sub_prefix: "{{ vpn_sub_prefix }}"
+angie_hop_paths:
+  hop1: "{{ vpn_path_hop1 }}"
+  hop2: "{{ vpn_path_hop2 }}"
+  hop3: "{{ vpn_path_hop3 }}"
+
+# Facts the role needs when the play runs with gather_facts: false.
+angie_required_facts:
+  - os_family
+  - distribution
+  - distribution_release

@@ -1,4 +1,6 @@
 ---
+# Only fires when the ruleset template actually changed, so reporting a
+# change here is accurate.
 - name: Reload nftables
-  ansible.builtin.command: nft -f /etc/nftables.conf
+  ansible.builtin.command: "nft -f {{ firewall_config_file }}"
   changed_when: true

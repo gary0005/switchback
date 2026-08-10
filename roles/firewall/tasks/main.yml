@@ -1,9 +1,23 @@
 ---
+- name: Ensure ansible_facts used by role
+  ansible.builtin.setup:
+    gather_subset: min
+  when: not ansible_facts.keys() | list |
+    intersect(firewall_required_facts) == firewall_required_facts
+
+- name: Install nftables
+  ansible.builtin.apt:
+    name: "{{ firewall_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Deploy nftables ruleset
   ansible.builtin.template:
     src: nftables.conf.j2
-    dest: /etc/nftables.conf
+    dest: "{{ firewall_config_file }}"
     mode: "0644"
+    backup: true
     validate: "nft -c -f %s"
   notify: Reload nftables
 

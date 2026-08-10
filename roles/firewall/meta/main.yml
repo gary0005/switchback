@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: firewall
+  namespace: switchback
+  author: gary0005
+  description: Default-drop nftables ruleset derived from the node's place in the topology.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - firewall
+    - nftables
+    - security
+
+dependencies: []

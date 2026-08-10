@@ -1,0 +1,26 @@
+---
+# Packages every node needs regardless of the part it plays. Packages that
+# only one role needs are installed by that role, so each role can be run on
+# its own: nftables by `firewall`, unzip by `xray`.
+common_base_packages:
+  - ca-certificates
+  - curl
+  - chrony
+  - python3
+  - unattended-upgrades
+
+# Reality and VLESS depend on the clock: more than a couple of minutes of
+# drift breaks the handshake.
+common_time_sync_service: chrony
+
+common_sysctl_file: /etc/sysctl.d/99-vpn.conf
+common_unattended_upgrades_enabled: true
+
+# QUIC/HTTP3 pushes large UDP datagrams: with the default buffers angie logs
+# a warning and h3 throughput degrades.
+common_socket_buffer_max: 16777216
+common_file_max: 1000000
+
+# Facts the role needs when the play runs with gather_facts: false.
+common_required_facts:
+  - os_family

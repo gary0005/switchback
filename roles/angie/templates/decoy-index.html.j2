@@ -1,9 +1,12 @@
+{#- The footer carries no year on purpose: a rendered timestamp would rewrite
+    this file every January and report a spurious change. -#}
 <!doctype html>
+<!-- {{ ansible_managed }} -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ public_domain }}</title>
+<title>{{ angie_domain }}</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 4rem auto;
          padding: 0 1.5rem; color: #222; line-height: 1.6; }
@@ -11,9 +14,9 @@
 </style>
 </head>
 <body>
-  <h1>{{ public_domain }}</h1>
+  <h1>{{ angie_domain }}</h1>
   <p>This host serves internal tooling. There is nothing publicly available here.</p>
   <p>For access requests, contact the administrator.</p>
-  <footer>&copy; {{ '%Y' | strftime }} {{ public_domain }}</footer>
+  <footer>&copy; {{ angie_domain }}</footer>
 </body>
 </html>

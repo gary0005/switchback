@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: xray
+  namespace: switchback
+  author: gary0005
+  description: Xray-core install, deterministic Reality keys and per-node routing config.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - proxy
+    - networking
+    - vpn
+
+dependencies: []

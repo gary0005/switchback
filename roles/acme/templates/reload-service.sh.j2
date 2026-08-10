@@ -1,0 +1,5 @@
+#!/bin/sh
+{{ ansible_managed | comment }}
+# Runs after certbot successfully renews a certificate. Failure to reload must
+# not fail the renewal itself, hence the guard.
+systemctl reload {{ acme_reload_service }} 2>/dev/null || true

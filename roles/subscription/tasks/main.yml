@@ -1,29 +1,47 @@
 ---
 # Subscriptions are static files. No backend: nothing to exploit, nothing
 # to monitor, and every angie node serves the identical set.
+- name: Ensure subscription root exists
+  ansible.builtin.file:
+    path: "{{ subscription_root }}"
+    state: directory
+    mode: "0755"
+
 - name: Render subscription payloads
   ansible.builtin.template:
     src: sub.txt.j2
-    dest: "/var/www/sub/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}"
+    dest: "{{ subscription_root }}/{{ __subscription_token }}"
     mode: "0644"
-  loop: "{{ users }}"
+    backup: true
+  loop: "{{ subscription_users }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item['name'] }}"
+  vars:
+    __subscription_token: "{{ ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] }}"
 
 - name: Render human-readable pages
   ansible.builtin.template:
-    src: "index.{{ sub_page_lang }}.html.j2"
-    dest: "/var/www/sub/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}.html"
+    src: "index.{{ subscription_page_lang }}.html.j2"
+    dest: "{{ subscription_root }}/{{ __subscription_token }}.html"
     mode: "0644"
-  loop: "{{ users }}"
+    backup: true
+  loop: "{{ subscription_users }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item['name'] }}"
+  vars:
+    __subscription_token: "{{ ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] }}"
 
+# The token *is* the credential, so this stays off unless asked for. The
+# links are reproducible from the seed at any time — see the role README.
 - name: Show subscription links
   ansible.builtin.debug:
     msg: >-
-      {{ item.name }} ({{ item.tier }}):
-      https://{{ public_domain }}{{ sub_prefix }}/{{ ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] }}
-  loop: "{{ users }}"
+      {{ item['name'] }} ({{ item['tier'] }}):
+      https://{{ subscription_domain }}{{ subscription_prefix }}/{{ __subscription_token }}
+    verbosity: 1
+  loop: "{{ subscription_users }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item['name'] }}"
+  when: subscription_show_links | bool
+  vars:
+    __subscription_token: "{{ ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] }}"

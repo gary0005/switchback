@@ -2,33 +2,102 @@
 # Order matters: exit nodes come up first so edge has somewhere to route to.
 # There are no cross-host fact dependencies — every key is derived from
 # vault_seed, so any play can be run with --limit independently.
+#
+# Tags. Every role can be run or skipped by its own name, and two purpose
+# tags are complete on their own:
+#
+#   --tags users  refresh what depends on the user roster: xray rebuilds its
+#                 inbound client lists, subscription re-renders the links.
+#                 Use it after editing vpn_users or bumping a `rot`.
+#   --tags certs  request or renew certificates only.
+#
+# Roles are imported as tasks rather than listed in a `roles:` section so the
+# tags above can be attached; mixing both sections is what makes execution
+# order non-obvious.
 
 - name: Exit nodes (xray only, one random port exposed)
   hosts: exit
   become: true
-  roles:
-    - common
-    - xray
-    - firewall
+  tasks:
+    - name: Apply base system configuration
+      ansible.builtin.import_role:
+        name: common
+      tags: [common]
+
+    - name: Configure xray
+      ansible.builtin.import_role:
+        name: xray
+      tags: [xray, users]
+
+    - name: Configure the firewall
+      ansible.builtin.import_role:
+        name: firewall
+      tags: [firewall]
 
 - name: Edge nodes (angie + xray + subscriptions)
   hosts: edge
   become: true
-  roles:
-    - common
-    - acme
-    - xray
-    - angie
-    - subscription
-    - firewall
+  tasks:
+    - name: Apply base system configuration
+      ansible.builtin.import_role:
+        name: common
+      tags: [common]
+
+    - name: Issue TLS certificates
+      ansible.builtin.import_role:
+        name: acme
+      tags: [acme, certs]
+
+    - name: Configure xray
+      ansible.builtin.import_role:
+        name: xray
+      tags: [xray, users]
+
+    - name: Configure angie
+      ansible.builtin.import_role:
+        name: angie
+      tags: [angie]
+
+    - name: Publish subscriptions
+      ansible.builtin.import_role:
+        name: subscription
+      tags: [subscription, users]
+
+    - name: Configure the firewall
+      ansible.builtin.import_role:
+        name: firewall
+      tags: [firewall]
 
 - name: Entry nodes (ingress for the 3-hop chain)
   hosts: ru
   become: true
-  roles:
-    - common
-    - acme
-    - xray
-    - angie
-    - subscription
-    - firewall
+  tasks:
+    - name: Apply base system configuration
+      ansible.builtin.import_role:
+        name: common
+      tags: [common]
+
+    - name: Issue TLS certificates
+      ansible.builtin.import_role:
+        name: acme
+      tags: [acme, certs]
+
+    - name: Configure xray
+      ansible.builtin.import_role:
+        name: xray
+      tags: [xray, users]
+
+    - name: Configure angie
+      ansible.builtin.import_role:
+        name: angie
+      tags: [angie]
+
+    - name: Publish subscriptions
+      ansible.builtin.import_role:
+        name: subscription
+      tags: [subscription, users]
+
+    - name: Configure the firewall
+      ansible.builtin.import_role:
+        name: firewall
+      tags: [firewall]

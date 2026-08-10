@@ -1,0 +1,82 @@
+---
+argument_specs:
+  main:
+    short_description: Render per-user subscription files.
+    description:
+      - Writes one base64 subscription payload and one HTML page per user,
+        under a filename derived from the deployment seed.
+      - >-
+        Static files only. There is no backend — nothing to exploit, nothing
+        to monitor, and every angie node serves the identical set.
+      - The filename is the credential. Anyone holding the URL holds the
+        access, which is why the links are not printed by default.
+    options:
+      subscription_root:
+        description:
+          - Directory the payloads are written to. Must match angie_sub_root.
+        type: str
+        default: /var/www/sub
+      subscription_page_lang:
+        description:
+          - Language of the user-facing page. Selects
+            templates/index.<lang>.html.j2, so adding a language means adding
+            that template.
+        type: str
+        default: en
+      subscription_update_interval:
+        description: Refresh interval hint given to clients, in hours.
+        type: int
+        default: 12
+      subscription_show_links:
+        description:
+          - Whether to print the subscription URLs during the run. A URL is a
+            credential, so this is off by default; combine with -v when you
+            do want them.
+        type: bool
+        default: false
+      subscription_edge_group:
+        description: Inventory group of nodes serving the 1-hop and 2-hop chains.
+        type: str
+        default: edge
+      subscription_entry_group:
+        description: Inventory group of nodes serving the 3-hop chain.
+        type: str
+        default: ru
+      subscription_domain:
+        description:
+          - Domain the links point at. Defaults to the node's inventory
+            public_domain.
+        type: str
+        default: "{{ public_domain }}"
+      subscription_prefix:
+        description: Secret path prefix angie serves the payloads under.
+        type: str
+      subscription_users:
+        description: User roster. Each entry needs name, tier and rot.
+        type: list
+        elements: dict
+        options:
+          name:
+            description: User name.
+            type: str
+            required: true
+          tier:
+            description: Tier deciding which chains the user may use.
+            type: str
+            required: true
+          rot:
+            description: Rotation counter; bump it to reissue the link.
+            type: int
+            required: true
+      subscription_tier_hop1:
+        description: Tiers allowed on the 1-hop chain.
+        type: list
+        elements: str
+      subscription_tier_hop2:
+        description: Tiers allowed on the 2-hop chain.
+        type: list
+        elements: str
+      subscription_tier_hop3:
+        description: Tiers allowed on the 3-hop chain.
+        type: list
+        elements: str

@@ -1,14 +1,19 @@
-{#- Client lists are built as lists and piped through to_json: always valid JSON -#}
+{#- Client lists are built as lists and piped through to_json: always valid JSON.
+    Peer values in the outbounds below come from the inventory-level vpn_*
+    names: an exit node lives in a different play, so xray's role defaults are
+    not in its hostvars. -#}
 {%- set c1 = [] -%}
-{%- for u in users if u.tier in tier_hop1 -%}
-{%-   set _ = c1.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- for u in xray_users if u['tier'] in xray_tier_hop1 -%}
+{%-   set uuid = (vault_seed ~ ':user:' ~ u['name'] ~ ':' ~ u['rot']) | to_uuid -%}
+{%-   set _ = c1.append({'id': uuid, 'email': u['name'], 'level': 0}) -%}
 {%- endfor -%}
 {%- set c2 = [] -%}
-{%- for u in users if u.tier in tier_hop2 -%}
-{%-   set _ = c2.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- for u in xray_users if u['tier'] in xray_tier_hop2 -%}
+{%-   set uuid = (vault_seed ~ ':user:' ~ u['name'] ~ ':' ~ u['rot']) | to_uuid -%}
+{%-   set _ = c2.append({'id': uuid, 'email': u['name'], 'level': 0}) -%}
 {%- endfor -%}
 {#- Service account for the inbound link from the domestic entry node -#}
-{%- set _ = c2.append({'id': node_link_uuid, 'email': 'node-ru@internal', 'level': 0}) -%}
+{%- set _ = c2.append({'id': xray_node_link_uuid, 'email': 'node-ru@internal', 'level': 0}) -%}
 {
   "log": { "loglevel": "warning", "access": "none" },
 
@@ -37,25 +42,25 @@
 
   "outbounds": [
     { "tag": "direct", "protocol": "freedom" },
-{% for h in groups['exit'] | default([]) %}
+{% for h in groups[xray_exit_group] | default([]) %}
     {
       "tag": "to-exit-{{ h }}",
       "protocol": "vless",
       "settings": {
         "vnext": [{
-          "address": "{{ hostvars[h].ansible_host }}",
-          "port": {{ hostvars[h].xray_relay_port | int }},
-          "users": [{ "id": "{{ relay_uuid }}", "encryption": "none", "flow": "xtls-rprx-vision" }]
+          "address": "{{ hostvars[h]['ansible_host'] }}",
+          "port": {{ hostvars[h]['vpn_relay_port'] | int }},
+          "users": [{ "id": "{{ xray_relay_uuid }}", "encryption": "none", "flow": "xtls-rprx-vision" }]
         }]
       },
       "streamSettings": {
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "serverName": "{{ reality_server_names[0] }}",
+          "serverName": "{{ xray_reality_server_names[0] }}",
           "fingerprint": "chrome",
-          "publicKey": "{{ reality[h][1] }}",
-          "shortId": "{{ hostvars[h].reality_short_id }}"
+          "publicKey": "{{ __xray_reality[h][1] }}",
+          "shortId": "{{ hostvars[h]['vpn_reality_short_id'] }}"
         }
       }
     },

@@ -1,0 +1,6 @@
+---
+ansible_host: 203.0.113.10
+
+# Read across plays via hostvars by the subscription and xray roles, so it has
+# to live in the inventory rather than in a role's defaults.
+public_domain: e1.example.com

@@ -1,6 +1,12 @@
+{#- The entry node reaches out over exactly the same XHTTP/443 a regular client
+    uses. That is what enforces "domestic egress hits angie only". Edge values
+    in the outbounds come from the inventory-level vpn_* names: an edge node
+    lives in a different play, so xray's role defaults are not in its
+    hostvars. -#}
 {%- set c3 = [] -%}
-{%- for u in users if u.tier in tier_hop3 -%}
-{%-   set _ = c3.append({'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid, 'email': u.name, 'level': 0}) -%}
+{%- for u in xray_users if u['tier'] in xray_tier_hop3 -%}
+{%-   set uuid = (vault_seed ~ ':user:' ~ u['name'] ~ ':' ~ u['rot']) | to_uuid -%}
+{%-   set _ = c3.append({'id': uuid, 'email': u['name'], 'level': 0}) -%}
 {%- endfor -%}
 {
   "log": { "loglevel": "warning", "access": "none" },
@@ -19,30 +25,28 @@
   ],
 
   "outbounds": [
-{# The entry node reaches out over exactly the same XHTTP/443 a regular   #}
-{# client uses. That is what enforces "domestic egress hits angie only".   #}
-{% for h in groups['edge'] | default([]) %}
+{% for h in groups[xray_edge_group] | default([]) %}
     {
       "tag": "to-edge-{{ h }}",
       "protocol": "vless",
       "settings": {
         "vnext": [{
-          "address": "{{ hostvars[h].public_domain }}",
+          "address": "{{ hostvars[h]['public_domain'] }}",
           "port": 443,
-          "users": [{ "id": "{{ node_link_uuid }}", "encryption": "none" }]
+          "users": [{ "id": "{{ xray_node_link_uuid }}", "encryption": "none" }]
         }]
       },
       "streamSettings": {
         "network": "xhttp",
         "security": "tls",
         "tlsSettings": {
-          "serverName": "{{ hostvars[h].public_domain }}",
+          "serverName": "{{ hostvars[h]['public_domain'] }}",
           "alpn": ["h2"],
           "fingerprint": "chrome"
         },
         "xhttpSettings": {
-          "host": "{{ hostvars[h].public_domain }}",
-          "path": "{{ hostvars[h].xray_path_hop2 }}",
+          "host": "{{ hostvars[h]['public_domain'] }}",
+          "path": "{{ hostvars[h]['vpn_path_hop2'] }}",
           "mode": "packet-up"
         }
       }

@@ -1,0 +1,57 @@
+---
+argument_specs:
+  main:
+    short_description: Issue a TLS certificate over dns-01.
+    description:
+      - Installs certbot with a DNS plugin and requests a certificate for the
+        node's public domain.
+      - dns-01 rather than http-01 so the certificate is issued before the
+        domain takes any traffic and port 80 never has to be opened for a
+        challenge.
+      - Requires the vault variable used by the provider credentials template,
+        for example vault_cf_api_token for Cloudflare.
+    options:
+      acme_email:
+        description:
+          - >-
+            Address Let's Encrypt sends expiry notices to. Required, and
+            deliberately given no default — a bogus address means nobody is
+            told when renewal starts failing.
+        type: str
+        required: true
+      acme_domain:
+        description:
+          - Name the certificate is issued for. Defaults to the node's
+            inventory public_domain, which is what angie terminates TLS for.
+        type: str
+        default: "{{ public_domain }}"
+      acme_dns_provider:
+        description:
+          - certbot DNS plugin to use. Selects both the
+            python3-certbot-dns-<provider> package and the
+            templates/<provider>.ini.j2 credentials template, so adding a
+            provider means adding that template.
+        type: str
+        default: cloudflare
+      acme_config_dir:
+        description: certbot configuration directory.
+        type: str
+        default: /etc/letsencrypt
+      acme_propagation_seconds:
+        description: How long certbot waits for the DNS record to propagate.
+        type: int
+        default: 30
+      acme_reload_service:
+        description:
+          - Service the renewal deploy hook reloads once a new certificate
+            lands.
+        type: str
+        default: angie
+      acme_required_facts:
+        description:
+          - Facts the role needs. Gathered with gather_subset=min when the
+            play runs with gather_facts disabled.
+        type: list
+        elements: str
+        default:
+          - os_family

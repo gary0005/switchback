@@ -1,14 +1,13 @@
 ---
+- name: Ensure ansible_facts used by role
+  ansible.builtin.setup:
+    gather_subset: min
+  when: not ansible_facts.keys() | list |
+    intersect(common_required_facts) == common_required_facts
+
 - name: Install base packages
   ansible.builtin.apt:
-    name:
-      - ca-certificates
-      - curl
-      - unzip
-      - chrony
-      - nftables
-      - python3
-      - unattended-upgrades
+    name: "{{ common_base_packages }}"
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -16,23 +15,23 @@
 # Reality and VLESS depend on the clock: more than a couple of minutes of
 # drift breaks the handshake. This is the number one cause of
 # "everything suddenly stopped working".
-- name: Ensure chrony is running
+- name: Ensure time synchronisation is running
   ansible.builtin.service:
-    name: chrony
+    name: "{{ common_time_sync_service }}"
     state: started
     enabled: true
 
 - name: Tune sysctl for BBR and QUIC
   ansible.builtin.template:
     src: 99-vpn.conf.j2
-    dest: /etc/sysctl.d/99-vpn.conf
+    dest: "{{ common_sysctl_file }}"
     mode: "0644"
+    backup: true
   notify: Reload sysctl
 
 - name: Enable unattended upgrades
-  ansible.builtin.copy:
+  ansible.builtin.template:
+    src: 20auto-upgrades.j2
     dest: /etc/apt/apt.conf.d/20auto-upgrades
     mode: "0644"
-    content: |
-      APT::Periodic::Update-Package-Lists "1";
-      APT::Periodic::Unattended-Upgrade "1";
+    backup: true

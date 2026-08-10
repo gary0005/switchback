@@ -1,0 +1,24 @@
+---
+# Certificates are issued over dns-01 rather than http-01: the certificate is
+# obtained before the domain takes any traffic, and port 80 never has to be
+# opened for a challenge.
+acme_dns_provider: cloudflare
+
+# Name the certificate is issued for. Defaults to the node's inventory
+# `public_domain` because that is the name angie terminates TLS for.
+acme_domain: "{{ public_domain }}"
+
+# Email Let's Encrypt uses for expiry notices. There is no meaningful default,
+# so it is declared here but left unset: set it in your inventory and let the
+# role fail loudly rather than register a bogus address.
+# acme_email: ""
+
+acme_config_dir: /etc/letsencrypt
+acme_propagation_seconds: 30
+
+# Service reloaded by the renewal deploy hook once a new certificate lands.
+acme_reload_service: angie
+
+# Facts the role needs when the play runs with gather_facts: false.
+acme_required_facts:
+  - os_family

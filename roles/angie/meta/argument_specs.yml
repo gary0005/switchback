@@ -1,0 +1,106 @@
+---
+argument_specs:
+  main:
+    short_description: Install and configure Angie as the TLS front end.
+    description:
+      - Terminates user TLS on 443 over both TCP (h2) and QUIC (h3), proxies
+        the XHTTP paths to xray over unix sockets, serves the subscription
+        directory under a secret prefix, and answers everything else with a
+        decoy page.
+      - Expects the acme role to have placed a certificate for the node's
+        domain, and the xray role to own the socket directory.
+    options:
+      angie_domain:
+        description:
+          - Name angie terminates TLS for. Defaults to the node's inventory
+            public_domain.
+        type: str
+        default: "{{ public_domain }}"
+      angie_conf_dir:
+        description: Angie configuration directory.
+        type: str
+        default: /etc/angie
+      angie_cert_dir:
+        description: Directory holding fullchain.pem and privkey.pem.
+        type: str
+      angie_decoy_root:
+        description:
+          - Document root for the decoy site. An empty root is the cheapest
+            way to fail an active probe, so this is not decoration.
+        type: str
+        default: /var/www/decoy
+      angie_sub_root:
+        description:
+          - Directory the subscription role renders into. Must match
+            subscription_root.
+        type: str
+        default: /var/www/sub
+      angie_worker_connections:
+        description: worker_connections in the events block.
+        type: int
+        default: 16384
+      angie_keepalive_timeout:
+        description: keepalive_timeout in seconds.
+        type: int
+        default: 65
+      angie_upstream_keepalive:
+        description: Idle upstream connections kept per xray socket.
+        type: int
+        default: 64
+      angie_client_max_body_size:
+        description:
+          - client_max_body_size. XHTTP sends bodies of unknown length and
+            the default 1M ceiling tears the upload stream, so 0 disables it.
+        type: int
+        default: 0
+      angie_proxy_timeout:
+        description: proxy_read_timeout and proxy_send_timeout for XHTTP locations.
+        type: str
+        default: 300s
+      angie_access_log:
+        description:
+          - >-
+            Whether to keep an access log. Off by default — a node should not
+            retain a record of who passed through it and when.
+        type: bool
+        default: false
+      angie_repo_key_url:
+        description: Where the Angie signing key is fetched from.
+        type: str
+      angie_repo_keyring:
+        description:
+          - Keyring the signing key is written to. A dedicated keyring
+            referenced with signed-by, rather than /etc/apt/trusted.gpg.d,
+            which would trust the key for every repository on the system.
+        type: str
+        default: /usr/share/keyrings/angie-signing.gpg
+      angie_repo_key_checksum:
+        description:
+          - SHA256 of the signing key in get_url format. Empty trusts the key
+            on first use; set it to pin the repository.
+        type: str
+        default: ""
+      angie_repo_base_url:
+        description: Base URL of the Angie apt repository.
+        type: str
+      angie_edge_group:
+        description:
+          - Inventory group whose members front two chains (hop1 and hop2).
+            Everything else fronts hop3.
+        type: str
+        default: edge
+      angie_socket_dir:
+        description: Unix socket directory shared with xray.
+        type: str
+      angie_sub_prefix:
+        description: Secret path prefix subscriptions are served under.
+        type: str
+      angie_hop_paths:
+        description: Mapping of chain name to the XHTTP path angie proxies.
+        type: dict
+      angie_required_facts:
+        description:
+          - Facts the role needs. Gathered with gather_subset=min when the
+            play runs with gather_facts disabled.
+        type: list
+        elements: str

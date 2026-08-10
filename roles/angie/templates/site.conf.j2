@@ -1,11 +1,12 @@
-# {{ ansible_managed }}
-
-{% if inventory_hostname in groups['edge'] | default([]) %}
-upstream xray_hop1 { server unix:{{ xray_socket_dir }}/hop1.sock; keepalive 64; }
-upstream xray_hop2 { server unix:{{ xray_socket_dir }}/hop2.sock; keepalive 64; }
-{% else %}
-upstream xray_hop3 { server unix:{{ xray_socket_dir }}/hop3.sock; keepalive 64; }
-{% endif %}
+{{ ansible_managed | comment }}
+{% set is_edge = inventory_hostname in groups[angie_edge_group] | default([]) %}
+{% set hops = ['hop1', 'hop2'] if is_edge else ['hop3'] %}
+{% for hop in hops %}
+upstream xray_{{ hop }} {
+    server unix:{{ angie_socket_dir }}/{{ hop }}.sock;
+    keepalive {{ angie_upstream_keepalive | int }};
+}
+{% endfor %}
 
 server {
     listen 443 ssl reuseport;
@@ -14,19 +15,19 @@ server {
     listen [::]:443 quic reuseport;
 
     http2 on;
-    server_name {{ public_domain }};
+    server_name {{ angie_domain }};
 
-    ssl_certificate     /etc/letsencrypt/live/{{ public_domain }}/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/{{ public_domain }}/privkey.pem;
+    ssl_certificate     {{ angie_cert_dir }}/fullchain.pem;
+    ssl_certificate_key {{ angie_cert_dir }}/privkey.pem;
 
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
 
     # XHTTP sends bodies of unknown length — the default 1M limit tears the
     # upload stream on the first sizeable request.
-    client_max_body_size 0;
+    client_max_body_size {{ angie_client_max_body_size }};
 
-{% for hop in (['hop1', 'hop2'] if inventory_hostname in groups['edge'] | default([]) else ['hop3']) %}
-    location {{ lookup('vars', 'xray_path_' ~ hop) }} {
+{% for hop in hops %}
+    location {{ angie_hop_paths[hop] }} {
         proxy_pass              http://xray_{{ hop }};
         proxy_http_version      1.1;
         proxy_set_header        Connection "";
@@ -37,20 +38,20 @@ server {
         # instead of forwarding it straight through.
         proxy_buffering         off;
         proxy_request_buffering off;
-        proxy_read_timeout      300s;
-        proxy_send_timeout      300s;
+        proxy_read_timeout      {{ angie_proxy_timeout }};
+        proxy_send_timeout      {{ angie_proxy_timeout }};
     }
 
 {% endfor %}
-    location {{ sub_prefix }}/ {
-        alias /var/www/sub/;
+    location {{ angie_sub_prefix }}/ {
+        alias {{ angie_sub_root }}/;
         default_type text/plain;
         add_header profile-update-interval "12" always;
         add_header Cache-Control "no-store" always;
     }
 
     location / {
-        root /var/www/decoy;
+        root {{ angie_decoy_root }};
         index index.html;
     }
 }

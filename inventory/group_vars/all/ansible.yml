@@ -1,0 +1,5 @@
+---
+# Ansible connection settings. Reserved by convention for the connection
+# plumbing (user, interpreter, become) — never for deployment data.
+ansible_user: root
+ansible_python_interpreter: /usr/bin/python3

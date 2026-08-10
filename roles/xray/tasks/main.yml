@@ -1,4 +1,17 @@
 ---
+- name: Ensure ansible_facts used by role
+  ansible.builtin.setup:
+    gather_subset: min
+  when: not ansible_facts.keys() | list |
+    intersect(xray_required_facts) == xray_required_facts
+
+- name: Install packages needed to unpack the release
+  ansible.builtin.apt:
+    name: "{{ xray_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 - name: Create xray directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -6,41 +19,60 @@
     mode: "0755"
   loop:
     - "{{ xray_dir }}"
-    - /usr/local/share/xray
+    - "{{ xray_share_dir }}"
 
+# Reads the version off the installed binary so the download below is skipped
+# on every run after the first. Never reports a change, and is safe to run in
+# check mode because it only reads.
 - name: Check installed xray version
-  ansible.builtin.command: /usr/local/bin/xray version
-  register: xray_installed
+  ansible.builtin.command: "{{ xray_bin }} version"
+  register: __xray_installed
   changed_when: false
   failed_when: false
+  check_mode: false
 
 - name: Download and install xray
-  when: xray_version not in (xray_installed.stdout | default(''))
+  when: xray_version not in (__xray_installed.stdout | default(''))
   block:
+    - name: Create staging directory
+      ansible.builtin.file:
+        path: "{{ xray_stage_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
     - name: Fetch xray release
       ansible.builtin.get_url:
-        url: "https://github.com/XTLS/Xray-core/releases/download/v{{ xray_version }}/Xray-linux-64.zip"
-        dest: /tmp/xray.zip
-        mode: "0644"
+        url: "{{ xray_download_url }}"
+        dest: "{{ xray_stage_dir }}/xray.zip"
+        mode: "0600"
+        checksum: "{{ xray_archive_checksum | default(omit, true) }}"
 
     - name: Unpack xray
       ansible.builtin.unarchive:
-        src: /tmp/xray.zip
-        dest: /tmp/xray-unpack
+        src: "{{ xray_stage_dir }}/xray.zip"
+        dest: "{{ xray_stage_dir }}"
         remote_src: true
-        creates: /tmp/xray-unpack/xray
 
     - name: Install binary and geo data
       ansible.builtin.copy:
-        src: "/tmp/xray-unpack/{{ item.f }}"
-        dest: "{{ item.d }}"
+        src: "{{ xray_stage_dir }}/{{ item.src }}"
+        dest: "{{ item.dest }}"
         remote_src: true
-        mode: "{{ item.m }}"
+        mode: "{{ item.mode }}"
       loop:
-        - { f: xray,        d: /usr/local/bin/xray,                     m: "0755" }
-        - { f: geoip.dat,   d: /usr/local/share/xray/geoip.dat,         m: "0644" }
-        - { f: geosite.dat, d: /usr/local/share/xray/geosite.dat,       m: "0644" }
+        - { src: xray, dest: "{{ xray_bin }}", mode: "0755" }
+        - { src: geoip.dat, dest: "{{ xray_share_dir }}/geoip.dat", mode: "0644" }
+        - { src: geosite.dat, dest: "{{ xray_share_dir }}/geosite.dat", mode: "0644" }
+      loop_control:
+        label: "{{ item.dest }}"
       notify: Restart xray
+  always:
+    - name: Remove staging directory
+      ansible.builtin.file:
+        path: "{{ xray_stage_dir }}"
+        state: absent
 
 # ---------------------------------------------------------------------------
 # Reality keys
@@ -48,34 +80,48 @@
 # The private key is derived deterministically from the seed; the public key
 # is computed from it by the xray binary. That lets edge compute the exit
 # node's key locally — no delegate_to, no fact cache, no play ordering.
+#
+# shell rather than command: the key derivation pipes python into xray into
+# awk. It only reads, so it neither reports a change nor needs to be skipped
+# in check mode — without check_mode: false the register below would come back
+# empty and every later template would fail on an undefined key.
 - name: Derive reality keypair for every offshore peer
-  ansible.builtin.shell: |
-    set -euo pipefail
-    PRIV=$(python3 -c "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" '{{ hostvars[item].reality_priv_hex }}')
-    PUB=$(/usr/local/bin/xray x25519 -i "$PRIV" | awk -F': *' 'tolower($1) ~ /public|password/ {print $2; exit}')
-    printf '%s %s\n' "$PRIV" "$PUB"
-  args:
+  ansible.builtin.shell:
     executable: /bin/bash
-  register: reality_keys
+    cmd: |
+      set -euo pipefail
+      PRIV=$(python3 -c \
+        "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" \
+        '{{ __xray_peer_priv_hex }}')
+      PUB=$({{ xray_bin }} x25519 -i "$PRIV" \
+        | awk -F': *' 'tolower($1) ~ /public|password/ {print $2; exit}')
+      printf '%s %s\n' "$PRIV" "$PUB"
+  vars:
+    __xray_peer_priv_hex: "{{ hostvars[item]['xray_reality_priv_hex'] }}"
+  register: __xray_reality_keys
   changed_when: false
-  loop: "{{ groups['eu'] | default([]) }}"
+  check_mode: false
+  loop: "{{ groups[xray_peer_group] | default([]) }}"
+  loop_control:
+    label: "{{ item }}"
 
 - name: Register reality keys as a lookup map
   ansible.builtin.set_fact:
-    reality: >-
-      {{ dict(reality_keys.results
+    __xray_reality: >-
+      {{ dict(__xray_reality_keys.results
               | map(attribute='item')
-              | zip(reality_keys.results
+              | zip(__xray_reality_keys.results
                     | map(attribute='stdout')
                     | map('split', ' ')
                     | map('map', 'trim'))) }}
 
 - name: Deploy xray config
   ansible.builtin.template:
-    src: "config-{{ node_role }}.json.j2"
+    src: "config-{{ xray_node_role | trim }}.json.j2"
     dest: "{{ xray_dir }}/config.json"
     mode: "0600"
-    validate: "/usr/local/bin/xray run -test -config %s"
+    backup: true
+    validate: "{{ xray_bin }} run -test -config %s"
   notify: Restart xray
 
 - name: Deploy systemd unit
@@ -83,6 +129,7 @@
     src: xray.service.j2
     dest: /etc/systemd/system/xray.service
     mode: "0644"
+    backup: true
   notify:
     - Reload systemd
     - Restart xray

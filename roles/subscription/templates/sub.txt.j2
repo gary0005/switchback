@@ -1,27 +1,44 @@
-{#- Config matrix: (chain) x (h2, h3). The tier decides which chains apply. -#}
-{%- set uuid = (vault_seed ~ ':user:' ~ item.name ~ ':' ~ item.rot) | to_uuid -%}
+{#- Config matrix: (chain) x (h2, h3). The tier decides which chains apply.
+    Peer values use the inventory-level vpn_* names: edge and entry nodes are
+    handled in different plays, so role defaults are not in their hostvars. -#}
+{%- set uuid = (vault_seed ~ ':user:' ~ item['name'] ~ ':' ~ item['rot']) | to_uuid -%}
 {%- set uris = [] -%}
-{%- for h in groups['edge'] | default([]) -%}
-{%-   set dom = hostvars[h].public_domain -%}
-{%-   if item.tier in tier_hop1 -%}
+{#- One place that knows the URI shape, so the three chains cannot drift. -#}
+{%- macro vless_uri(host, domain, path, alpn, label) -%}
+{%- set params = {
+      'encryption': 'none',
+      'security': 'tls',
+      'sni': domain,
+      'fp': 'chrome',
+      'alpn': alpn,
+      'type': 'xhttp',
+      'host': domain,
+      'path': path,
+      'mode': 'packet-up',
+    } -%}
+vless://{{ uuid }}@{{ domain }}:443?{{ params | urlencode }}#{{ host }}-{{ label }}-{{ alpn }}
+{%- endmacro -%}
+{%- for h in groups[subscription_edge_group] | default([]) -%}
+{%-   set dom = hostvars[h]['public_domain'] -%}
+{%-   if item['tier'] in subscription_tier_hop1 -%}
 {%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h].xray_path_hop1 | replace('/', '%2F') -%}
-{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-1hop-' ~ alpn) -%}
+{%-       set p = hostvars[h]['vpn_path_hop1'] -%}
+{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '1hop')) -%}
 {%-     endfor -%}
 {%-   endif -%}
-{%-   if item.tier in tier_hop2 -%}
+{%-   if item['tier'] in subscription_tier_hop2 -%}
 {%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h].xray_path_hop2 | replace('/', '%2F') -%}
-{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-2hop-' ~ alpn) -%}
+{%-       set p = hostvars[h]['vpn_path_hop2'] -%}
+{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '2hop')) -%}
 {%-     endfor -%}
 {%-   endif -%}
 {%- endfor -%}
-{%- if item.tier in tier_hop3 -%}
-{%-   for h in groups['ru'] | default([]) -%}
-{%-     set dom = hostvars[h].public_domain -%}
+{%- if item['tier'] in subscription_tier_hop3 -%}
+{%-   for h in groups[subscription_entry_group] | default([]) -%}
+{%-     set dom = hostvars[h]['public_domain'] -%}
 {%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h].xray_path_hop3 | replace('/', '%2F') -%}
-{%-       set _ = uris.append('vless://' ~ uuid ~ '@' ~ dom ~ ':443?encryption=none&security=tls&sni=' ~ dom ~ '&fp=chrome&alpn=' ~ alpn ~ '&type=xhttp&host=' ~ dom ~ '&path=' ~ p ~ '&mode=packet-up#' ~ h ~ '-3hop-' ~ alpn) -%}
+{%-       set p = hostvars[h]['vpn_path_hop3'] -%}
+{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '3hop')) -%}
 {%-     endfor -%}
 {%-   endfor -%}
 {%- endif -%}

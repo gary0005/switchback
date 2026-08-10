@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: subscription
+  namespace: switchback
+  author: gary0005
+  description: Static per-user subscription payloads and a human-readable landing page.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - web
+    - vpn
+
+dependencies: []

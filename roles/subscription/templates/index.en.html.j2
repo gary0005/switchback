@@ -1,5 +1,6 @@
-{%- set token = ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] -%}
+{%- set token = ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] -%}
 <!doctype html>
+<!-- {{ ansible_managed }} -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -21,7 +22,7 @@
 
 <p>Paste this link into your client as a <em>subscription</em> — configs will keep themselves up to date.</p>
 <div class="row">
-  <code id="sub">https://{{ public_domain }}{{ sub_prefix }}/{{ token }}</code>
+  <code id="sub">https://{{ subscription_domain }}{{ subscription_prefix }}/{{ token }}</code>
   <button onclick="copy('sub')">Copy</button>
 </div>
 
@@ -32,13 +33,13 @@
 
 <h2>What is inside</h2>
 <ul>
-{% if item.tier in tier_hop2 %}
+{% if item['tier'] in subscription_tier_hop2 %}
   <li><b>2hop</b> — the main chain; use this one by default.</li>
 {% endif %}
-{% if item.tier in tier_hop1 %}
+{% if item['tier'] in subscription_tier_hop1 %}
   <li><b>1hop</b> — for testing: shorter route, but the exit IP is the same as the entry IP.</li>
 {% endif %}
-{% if item.tier in tier_hop3 %}
+{% if item['tier'] in subscription_tier_hop3 %}
   <li><b>3hop</b> — enters via the domestic node; slower, but useful where a
       direct connection to an offshore IP does not get through.</li>
 {% endif %}

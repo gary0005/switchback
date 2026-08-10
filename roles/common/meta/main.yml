@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  role_name: common
+  namespace: switchback
+  author: gary0005
+  description: Baseline packages, clock synchronisation and network tuning for every node.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - system
+    - sysctl
+    - networking
+
+dependencies: []

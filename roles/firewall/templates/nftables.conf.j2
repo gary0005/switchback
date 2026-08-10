@@ -1,11 +1,20 @@
+{#- All computation happens up here, above the shebang, so the whitespace
+    control on these tags cannot eat into the ruleset below. -#}
+{#- Hosts allowed to reach the reality port, minus ourselves. -#}
+{%- set peers = (groups[firewall_peer_group] | default([])) | difference([inventory_hostname]) -%}
+{%- set is_peer = inventory_hostname in groups[firewall_peer_group] | default([]) -%}
+{#- Hosts that take user traffic on 80/443. -#}
+{%- set ingress_hosts = [] -%}
+{%- for group in firewall_ingress_groups -%}
+{%-   set _ = ingress_hosts.extend(groups[group] | default([])) -%}
+{%- endfor -%}
 #!/usr/sbin/nft -f
-# {{ ansible_managed }}
+{{ ansible_managed | comment }}
 flush ruleset
 
 table inet filter {
-{% set peers = (groups['eu'] | default([])) | difference([inventory_hostname]) %}
-{% if inventory_hostname in groups['eu'] | default([]) and peers | length > 0 %}
-    # Offshore nodes only. The domestic entry node is not in the eu group,
+{% if is_peer and peers | length > 0 %}
+    # Offshore nodes only. The domestic entry node is not in the peer group,
     # so it can never land here — "domestic egress hits angie only" is
     # structural, not a matter of operator discipline.
     set eu_peers {
@@ -23,21 +32,21 @@ table inet filter {
         ip protocol icmp accept
         ip6 nexthdr ipv6-icmp accept
 
-{% if ssh_allowed_cidrs | length > 0 %}
-        ip saddr { {{ ssh_allowed_cidrs | join(', ') }} } tcp dport 22 accept
+{% if firewall_ssh_allowed_cidrs | length > 0 %}
+        ip saddr { {{ firewall_ssh_allowed_cidrs | join(', ') }} } tcp dport {{ firewall_ssh_port | int }} accept
 {% else %}
-        tcp dport 22 accept
+        tcp dport {{ firewall_ssh_port | int }} accept
 {% endif %}
 
-{% if inventory_hostname in (groups['edge'] | default([])) + (groups['ru'] | default([])) %}
+{% if inventory_hostname in ingress_hosts %}
         # User ingress: HTTP/2 over TCP and HTTP/3 over QUIC.
-        tcp dport { 80, 443 } accept
-        udp dport 443 accept
+        tcp dport { {{ firewall_ingress_tcp_ports | join(', ') }} } accept
+        udp dport { {{ firewall_ingress_udp_ports | join(', ') }} } accept
 {% endif %}
 
-{% if inventory_hostname in groups['eu'] | default([]) and peers | length > 0 %}
+{% if is_peer and peers | length > 0 %}
         # Reality link between offshore nodes on a random port.
-        tcp dport {{ xray_relay_port | int }} ip saddr @eu_peers accept
+        tcp dport {{ firewall_relay_port | int }} ip saddr @eu_peers accept
 {% endif %}
     }
 

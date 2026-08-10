@@ -1,0 +1,53 @@
+---
+argument_specs:
+  main:
+    short_description: Baseline configuration applied to every node.
+    description:
+      - Installs the packages every node needs regardless of the part it
+        plays, keeps the clock synchronised, and applies the sysctl tuning
+        that BBR and QUIC depend on.
+      - Packages needed by exactly one other role are installed by that role,
+        so each role can be run on its own.
+    options:
+      common_base_packages:
+        description: Packages installed on every node.
+        type: list
+        elements: str
+        default:
+          - ca-certificates
+          - curl
+          - chrony
+          - python3
+          - unattended-upgrades
+      common_time_sync_service:
+        description:
+          - Service kept running to synchronise the clock. Reality and VLESS
+            both break on more than a couple of minutes of drift.
+        type: str
+        default: chrony
+      common_sysctl_file:
+        description: Path of the sysctl drop-in this role renders.
+        type: str
+        default: /etc/sysctl.d/99-vpn.conf
+      common_unattended_upgrades_enabled:
+        description: Whether unattended security upgrades are turned on.
+        type: bool
+        default: true
+      common_socket_buffer_max:
+        description:
+          - Value for net.core.rmem_max and net.core.wmem_max. QUIC pushes
+            large UDP datagrams and degrades on the default buffers.
+        type: int
+        default: 16777216
+      common_file_max:
+        description: Value for fs.file-max.
+        type: int
+        default: 1000000
+      common_required_facts:
+        description:
+          - Facts the role needs. Gathered with gather_subset=min when the
+            play runs with gather_facts disabled.
+        type: list
+        elements: str
+        default:
+          - os_family

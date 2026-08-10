@@ -8,17 +8,17 @@
       "port": {{ xray_relay_port | int }},
       "protocol": "vless",
       "settings": {
-        "clients": [{ "id": "{{ relay_uuid }}", "email": "relay@internal", "flow": "xtls-rprx-vision" }],
+        "clients": [{ "id": "{{ xray_relay_uuid }}", "email": "relay@internal", "flow": "xtls-rprx-vision" }],
         "decryption": "none"
       },
       "streamSettings": {
         "network": "tcp",
         "security": "reality",
         "realitySettings": {
-          "dest": "{{ reality_dest }}",
-          "serverNames": {{ reality_server_names | to_json }},
-          "privateKey": "{{ reality[inventory_hostname][0] }}",
-          "shortIds": ["{{ reality_short_id }}"]
+          "dest": "{{ xray_reality_dest }}",
+          "serverNames": {{ xray_reality_server_names | to_json }},
+          "privateKey": "{{ __xray_reality[inventory_hostname][0] }}",
+          "shortIds": ["{{ xray_reality_short_id }}"]
         }
       }
     }

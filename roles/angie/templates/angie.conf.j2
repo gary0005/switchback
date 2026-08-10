@@ -1,25 +1,25 @@
-# {{ ansible_managed }}
+{{ ansible_managed | comment }}
 user  angie;
 worker_processes  auto;
 error_log  /var/log/angie/error.log warn;
 pid        /run/angie.pid;
 
 events {
-    worker_connections  16384;
+    worker_connections  {{ angie_worker_connections | int }};
 }
 
 http {
-    include       /etc/angie/mime.types;
+    include       {{ angie_conf_dir }}/mime.types;
     default_type  application/octet-stream;
 
     # Access logging is off on purpose: a node should not retain a record
     # of who passed through it and when.
-    access_log  off;
+    access_log  {{ angie_access_log | ternary('/var/log/angie/access.log', 'off') }};
 
     sendfile        on;
     tcp_nopush      on;
     tcp_nodelay     on;
-    keepalive_timeout 65;
+    keepalive_timeout {{ angie_keepalive_timeout | int }};
     server_tokens   off;
 
     ssl_protocols             TLSv1.2 TLSv1.3;
@@ -28,5 +28,5 @@ http {
     ssl_session_timeout       1d;
     ssl_session_tickets       off;
 
-    include /etc/angie/http.d/*.conf;
+    include {{ angie_conf_dir }}/http.d/*.conf;
 }

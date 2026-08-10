@@ -1,5 +1,6 @@
-{%- set token = ((vault_seed ~ ':sub:' ~ item.name ~ ':' ~ item.rot) | hash('sha256'))[:32] -%}
+{%- set token = ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] -%}
 <!doctype html>
+<!-- {{ ansible_managed }} -->
 <html lang="ru">
 <head>
 <meta charset="utf-8">
@@ -21,7 +22,7 @@
 
 <p>Вставьте эту ссылку в клиент как <em>subscription</em> — конфиги обновятся сами.</p>
 <div class="row">
-  <code id="sub">https://{{ public_domain }}{{ sub_prefix }}/{{ token }}</code>
+  <code id="sub">https://{{ subscription_domain }}{{ subscription_prefix }}/{{ token }}</code>
   <button onclick="copy('sub')">Копировать</button>
 </div>
 
@@ -32,13 +33,13 @@
 
 <h2>Что внутри</h2>
 <ul>
-{% if item.tier in tier_hop2 %}
+{% if item['tier'] in subscription_tier_hop2 %}
   <li><b>2hop</b> — основная схема, её и используйте по умолчанию.</li>
 {% endif %}
-{% if item.tier in tier_hop1 %}
+{% if item['tier'] in subscription_tier_hop1 %}
   <li><b>1hop</b> — тестовая, короче маршрут, но выходной IP тот же, что и вход.</li>
 {% endif %}
-{% if item.tier in tier_hop3 %}
+{% if item['tier'] in subscription_tier_hop3 %}
   <li><b>3hop</b> — вход через российскую ноду; медленнее, но полезно там,
       где прямой доступ к зарубежному IP не проходит.</li>
 {% endif %}
