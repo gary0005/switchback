@@ -1,0 +1,9 @@
+---
+# Directory whose *contents* are copied to the document root. A bare relative
+# name resolves inside this role's files/; point it at an absolute path to
+# serve a site kept elsewhere — a built static site, say — without touching
+# the role.
+website_source: site/
+
+# Must match angie_site_root, which is what angie serves at /.
+website_root: /var/www/site

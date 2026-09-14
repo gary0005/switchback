@@ -1,0 +1,21 @@
+---
+# The site is what every domain answers with at /, on every node. It is also
+# the cover: a name that serves nothing, or serves an obvious placeholder,
+# fails the first active probe against it. Identical on all nodes on purpose —
+# nodes that differ in what they serve are nodes that can be told apart.
+- name: Ensure the document root exists
+  ansible.builtin.file:
+    path: "{{ website_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy the site
+  ansible.builtin.copy:
+    src: "{{ website_source }}"
+    dest: "{{ website_root }}/"
+    owner: root
+    group: root
+    mode: "0644"
+    directory_mode: "0755"

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header>
+  <h1>Notes</h1>
+  <nav><a href="/">Home</a> <a href="/notes.html">Notes</a></nav>
+</header>
+
+<main>
+<article id="tar">
+  <h2>Why tar keeps the leading slash</h2>
+  <p>
+    Creating an archive from an absolute path strips the leading slash and
+    prints a warning about it. That is deliberate: an archive of
+    <code>/etc</code> that unpacks into <code>/etc</code> wherever it lands is
+    a footgun, so the default is to make the paths relative and let you decide
+    where they go at extraction time.
+  </p>
+  <p>
+    Pass <code>-P</code> and it keeps the slash, on both sides — writing the
+    archive and reading it back. Worth knowing before you restore a backup on
+    a machine you did not make it on.
+  </p>
+</article>
+
+<article id="locale">
+  <h2>Sorting is not sorting</h2>
+  <p>
+    The same <code>sort</code> on two machines can disagree, because collation
+    order comes from the locale rather than from the bytes. Under
+    <code>en_US.UTF-8</code> punctuation and case are largely ignored; under
+    <code>C</code> every byte counts and uppercase sorts before lowercase.
+  </p>
+  <p>
+    If a script compares sorted output — a diff of two listings, say — pin it
+    with <code>LC_ALL=C</code>. Otherwise the test passes on your laptop and
+    fails on the build machine, and nothing in the diff explains why.
+  </p>
+</article>
+
+<article id="timestamps">
+  <h2>Three kinds of file timestamp</h2>
+  <p>
+    Every file carries three: mtime, when the contents last changed; atime,
+    when it was last read; and ctime, when the inode itself last changed —
+    a rename, a permission change, a new hard link.
+  </p>
+  <p>
+    There is no creation time in the traditional set, which is why a tool that
+    claims to sort by "date created" is really sorting by one of these. Most
+    pick mtime. That is usually what you wanted anyway, right up until the
+    moment you copy a tree without preserving it.
+  </p>
+</article>
+</main>
+
+<footer>
+  <p><a href="/">Back home</a></p>
+</footer>
+</body>
+</html>

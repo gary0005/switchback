@@ -1,0 +1,103 @@
+:root {
+  color-scheme: light dark;
+  --ink: #1b1b1b;
+  --muted: #6a6a6a;
+  --rule: #e2e2df;
+  --bg: #fbfbf9;
+  --link: #23508c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e6e6e3;
+    --muted: #9a9a95;
+    --rule: #333330;
+    --bg: #161614;
+    --link: #8fb6e8;
+  }
+}
+
+body {
+  font-family: Georgia, "Times New Roman", serif;
+  background: var(--bg);
+  color: var(--ink);
+  line-height: 1.65;
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+
+header {
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 1rem;
+  margin-bottom: 2rem;
+}
+
+h1 {
+  font-size: 1.6rem;
+  margin: 0 0 .4rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin-top: 2.2rem;
+}
+
+nav a {
+  font-family: system-ui, sans-serif;
+  font-size: .85rem;
+  margin-right: .9rem;
+}
+
+a {
+  color: var(--link);
+}
+
+a:hover {
+  text-decoration: none;
+}
+
+.lede {
+  font-size: 1.1rem;
+  color: var(--muted);
+}
+
+.posts {
+  list-style: none;
+  padding: 0;
+}
+
+.posts li {
+  margin: .7rem 0;
+}
+
+.posts span {
+  color: var(--muted);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: .88em;
+  background: color-mix(in srgb, var(--rule) 55%, transparent);
+  padding: .1rem .3rem;
+  border-radius: 3px;
+}
+
+article {
+  border-top: 1px solid var(--rule);
+  padding-top: 1rem;
+}
+
+article:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
+footer {
+  margin-top: 3.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--rule);
+  font-family: system-ui, sans-serif;
+  font-size: .82rem;
+  color: var(--muted);
+}

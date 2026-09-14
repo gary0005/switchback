@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: website
+  namespace: switchback
+  author: gary0005
+  description: Static site served at / on every node and every domain.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - web
+    - static
+
+dependencies: []

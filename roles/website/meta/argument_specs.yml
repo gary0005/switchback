@@ -1,0 +1,24 @@
+---
+argument_specs:
+  main:
+    short_description: Publish the static site every domain serves at /.
+    description:
+      - Copies a directory of static files to the document root angie serves
+        at /, identically on every node.
+      - This is the cover story as much as it is a website. A name that serves
+        nothing, or serves an obvious placeholder, fails the first active
+        probe against it; nodes that serve different things are nodes that can
+        be told apart.
+    options:
+      website_source:
+        description:
+          - Directory whose contents are copied to the document root. A bare
+            relative name resolves inside this role's files/; an absolute path
+            serves a site kept elsewhere, such as a built static site.
+        type: str
+        default: site/
+      website_root:
+        description:
+          - Document root on the node. Must match angie_site_root.
+        type: str
+        default: /var/www/site
