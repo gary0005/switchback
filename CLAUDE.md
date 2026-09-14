@@ -27,6 +27,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 - `reuseport` may appear only **once per address:port** across all server blocks. With more than one `server {}` on 443, only the first carries it.
 - xray unit needs `PrivateTmp=no`, or angie stops seeing the unix socket.
 - `chrony` is mandatory: VLESS breaks on minutes of clock drift.
+- apt "repository does not have a Release file" is a *path* error, not a signing one. Angie publishes per distribution version with the codename as the suite: `.../angie/ubuntu/26.04` + `resolute`. `deb822_repository` also needs `python3-debian` on the node and refuses to run without it.
 - A document root that serves nothing at `/` fails the first active probe.
 - certbot: use `--cert-name` when a cert covers several names, otherwise adding a SAN silently does nothing (the `creates:` guard still matches).
 - A Jinja comment or tag directly after `{{ ansible_managed | comment }}` eats the newline it ends on and comments out the first real line. Keep computation and explanation above it.

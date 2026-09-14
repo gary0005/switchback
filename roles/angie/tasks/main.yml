@@ -33,8 +33,8 @@
   ansible.builtin.deb822_repository:
     name: angie
     types: [deb]
-    uris: "{{ angie_repo_base_url }}/{{ ansible_facts['distribution'] | lower }}"
-    suites: ["{{ ansible_facts['distribution_release'] }}"]
+    uris: "{{ angie_repo_uri | trim }}"
+    suites: ["{{ angie_repo_suite }}"]
     components: [main]
     signed_by: "{{ angie_repo_keyring }}"
     enabled: true

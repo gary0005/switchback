@@ -105,6 +105,16 @@ argument_specs:
       angie_repo_base_url:
         description: Base URL of the Angie apt repository.
         type: str
+      angie_repo_uri:
+        description:
+          - Repository URI. Angie publishes per distribution version with the
+            codename as the suite, so this ends in the version - for example
+            .../angie/ubuntu/26.04 paired with the suite `resolute`. Override
+            both if your release is not published yet.
+        type: str
+      angie_repo_suite:
+        description: Suite within that repository; the distribution codename.
+        type: str
       angie_chains:
         description:
           - Chain declaration, as described by the xray role. angie serves a

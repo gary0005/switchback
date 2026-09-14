@@ -57,6 +57,17 @@ angie_repo_key_url: https://angie.software/keys/angie-signing.gpg
 angie_repo_keyring: /usr/share/keyrings/angie-signing.gpg
 angie_repo_base_url: https://download.angie.software/angie
 
+# Angie publishes per distribution *version*, with the codename as the suite:
+# .../angie/ubuntu/26.04 for the `resolute` suite. Getting this wrong reads as
+# "repository does not have a Release file", which sounds like a signing
+# problem and is not one.
+#
+# Override the pair if your release is not published yet — an older one
+# generally installs and runs fine.
+angie_repo_uri: >-
+  {{ angie_repo_base_url }}/{{ ansible_facts['distribution'] | lower }}/{{ ansible_facts['distribution_version'] }}
+angie_repo_suite: "{{ ansible_facts['distribution_release'] }}"
+
 # SHA256 of the signing key, in `get_url` format, e.g. "sha256:9f86d081...".
 # Empty means the key is trusted on first use — set it to pin the repository.
 angie_repo_key_checksum: ""
@@ -79,3 +90,4 @@ angie_required_facts:
   - os_family
   - distribution
   - distribution_release
+  - distribution_version

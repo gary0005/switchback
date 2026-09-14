@@ -47,6 +47,8 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `angie_client_max_body_size` | `0` | `client_max_body_size`; 0 disables the limit |
 | `angie_proxy_timeout` | `300s` | Read and send timeout for XHTTP locations |
 | `angie_repo_packages` | `[python3-debian]` | What `deb822_repository` needs to run at all |
+| `angie_repo_uri` | `<base>/<distro>/<version>` | Angie publishes per distribution *version* |
+| `angie_repo_suite` | distribution codename | The suite within that repository |
 | `angie_repo_key_checksum` | `""` | SHA256 pinning the signing key; empty is trust-on-first-use |
 | `angie_required_facts` | `[os_family, distribution, distribution_release]` | Facts gathered if the play sets `gather_facts: false` |
 
@@ -74,6 +76,18 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 **The acme-challenge location on port 80.** Without it certificates cannot be issued or renewed.
 
 **Access logging stays off.** A node should not retain a record of who passed through it and when.
+
+## "Repository does not have a Release file"
+
+That error reads like a signing problem and is not one — it means the path does not exist. Angie publishes per distribution **version**, with the codename as the suite: `.../angie/ubuntu/26.04` paired with `resolute`, not `.../angie/ubuntu` with `resolute`.
+
+If your release is not published yet, check what is:
+
+```bash
+curl -s https://download.angie.software/angie/ubuntu/ | grep -oE 'href="[0-9.]+/"'
+```
+
+and pin the pair to an older one — `angie_repo_uri` and `angie_repo_suite` exist for that.
 
 ## Why `angie -t` is a separate task
 
