@@ -1,0 +1,94 @@
+#!/bin/bash
+{{ ansible_managed | comment }}
+# certbot's dns-01 hook, called twice per name: once to publish the challenge
+# and once to take it down again.
+#
+#   {{ acme_hook_dir }}/dns-hook.sh add
+#   {{ acme_hook_dir }}/dns-hook.sh remove
+#
+# Written by hand rather than using a third-party certbot plugin: this runs as
+# root with a credential that can rewrite the zone, so it is worth being able
+# to read the whole thing. The API is two calls.
+set -euo pipefail
+
+action="${1:?usage: $0 add|remove}"
+
+# shellcheck source=/dev/null
+. "{{ acme_dns_credentials }}"
+
+# CERTBOT_IDENTIFIER is the current name; CERTBOT_DOMAIN is what older certbot
+# called it. Accept either, so a version bump does not silently break renewal.
+identifier="${CERTBOT_IDENTIFIER:-${CERTBOT_DOMAIN:-}}"
+: "${identifier:?certbot did not pass an identifier}"
+: "${CERTBOT_VALIDATION:?certbot did not pass a validation value}"
+
+# The API addresses records relative to the zone, so strip the zone suffix:
+# the apex becomes "_acme-challenge", v3.example.com becomes
+# "_acme-challenge.v3".
+subdomain="${identifier%".$DNS_ZONE"}"
+if [ "$subdomain" = "$identifier" ]; then
+    record="_acme-challenge"
+else
+    record="_acme-challenge.$subdomain"
+fi
+
+# Built with python rather than string-pasted: the validation value is
+# attacker-influenced in principle, and a quote in the wrong place here would
+# be a request we did not mean to send.
+body() {
+    RECORD="$record" ACTION="$action" python3 -c '
+import json, os
+item = {"type": "TXT", "name": os.environ["RECORD"],
+        "value": os.environ["CERTBOT_VALIDATION"]}
+if os.environ["ACTION"] == "add":
+    item["ttl"] = {{ acme_dns_ttl | int }}
+    print(json.dumps({"force": False, "items": [item]}))
+else:
+    print(json.dumps([item]))
+'
+}
+
+api() {
+    curl --silent --show-error --fail \
+         --request "$1" \
+         --header "X-API-Key: $DNS_API_KEY" \
+         --header "X-API-Secret: $DNS_API_SECRET" \
+         --header "Content-Type: application/json" \
+         --data "$(body)" \
+         "$DNS_API_BASE/dns/records/$DNS_ZONE"
+}
+
+case "$action" in
+add)
+    # PUT is additive on this API — it merges the records in `items` rather
+    # than replacing the zone. Confirmed against the libdns provider, which
+    # appends a single record exactly this way.
+    api PUT
+
+    # Let's Encrypt will query the authoritative servers itself; publishing is
+    # not the same as being visible. Poll until the value shows up rather than
+    # sleeping a fixed guess, and fail if it never does — a challenge asked
+    # for too early is a failed issue and a wasted rate-limit slot.
+    for _ in $(seq 1 {{ acme_dns_check_tries | int }}); do
+        if dig +short TXT "_acme-challenge.$identifier" "@{{ acme_dns_check_resolver }}" \
+            | tr -d '"' | grep -qx "$CERTBOT_VALIDATION"; then
+            exit 0
+        fi
+        sleep {{ acme_dns_check_interval | int }}
+    done
+
+    echo "TXT for _acme-challenge.$identifier did not become visible in time" >&2
+    exit 1
+    ;;
+remove)
+    # Best effort: a challenge record that outlives the run is litter, not a
+    # failure, and failing here would turn a successful issue into an error.
+    if ! api DELETE; then
+        echo "could not remove TXT $record from $DNS_ZONE; delete it by hand" >&2
+    fi
+    ;;
+*)
+    echo "usage: $0 add|remove" >&2
+    exit 2
+    ;;
+esac

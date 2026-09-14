@@ -120,7 +120,6 @@ vpn_socket_dir: /run/xray
 vpn_users:
   - { name: ops, tier: all, rot: 1 }    # whoever debugs the deployment
   - { name: lead, tier: all, rot: 1 }   # test chains as well as the real ones
-  - { name: u-a, tier: main, rot: 1 }   # working chains only
 
 # Which chain kinds each tier may use. `test` chains are single-hop and exist
 # to isolate faults, so they go to whoever debugs the deployment, not to users.
@@ -141,6 +140,13 @@ vpn_tier_kinds:
 # and an address in a public-facing repository is an address that gets
 # scraped. The role needs it under its own name, so this is the bridge.
 acme_email: "{{ vault_acme_email }}"
+
+# The zone every certificate is issued under, and the credentials each node
+# uses to write its dns-01 challenge into it. Same bridge, same reason: the
+# zone is a real domain and the rest are secrets.
+acme_dns_zone: "{{ vault_dns_zone }}"
+acme_dns_api_key: "{{ vault_spaceship_api_key }}"
+acme_dns_api_secret: "{{ vault_spaceship_api_secret }}"
 
 firewall_ssh_allowed_cidrs: []     # e.g. ["203.0.113.0/24"]; empty = 22 open
 

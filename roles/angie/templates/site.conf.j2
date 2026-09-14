@@ -83,15 +83,5 @@ server {
     listen 80 default_server;
     listen [::]:80 default_server;
     server_name _;
-
-    # http-01 is answered here, over plain HTTP and ahead of the redirect.
-    # This is what port 80 is open for; certificates cannot be renewed without
-    # it, so the redirect below must never swallow this prefix.
-    location /.well-known/acme-challenge/ {
-        root {{ angie_acme_webroot }};
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
+    return 301 https://$host$request_uri;
 }

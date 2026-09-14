@@ -1,14 +1,14 @@
 ---
-# Certificates are issued over http-01: the node answers the challenge itself
-# on port 80, so no DNS credential has to exist on it. A node that is broken
-# into cannot then be used to take over the zone — which is the reason this
-# deployment accepts http-01's constraint that a name must resolve to exactly
-# one node. See the README.
-acme_webroot: /var/www/acme
+# Certificates are issued over dns-01, answered through the registrar's API by
+# a hook this role installs. That buys two things http-01 cannot: a name may
+# resolve to several nodes at once — the shared apex does — and a certificate
+# is obtained before the domain takes any traffic, with port 80 needed only
+# for the redirect.
+#
+# It costs one thing, and it is not small: every node holds a credential that
+# can write to the zone. See the README.
 
 # Every name the certificate covers — this node's primary plus its aliases.
-# All of them must resolve to this node, or the challenge is answered by
-# whichever node the name points at instead.
 acme_domains: "{{ vpn_domains }}"
 
 # Lineage name, which is also the directory under live/. Keyed by inventory
@@ -23,17 +23,36 @@ acme_cert_name: "{{ inventory_hostname }}"
 
 acme_config_dir: /etc/letsencrypt
 
-# --- Where angie looks for the certificate ---------------------------------
-# angie is pointed at a symlink, never at a lineage directly. That breaks the
-# deadlock http-01 creates: angie will not start without a certificate, and
-# certbot cannot obtain one until angie is answering on port 80. The symlink
-# starts out on a self-signed placeholder, angie comes up, the challenge is
-# answered, and the symlink moves to the real lineage — all in one run, with
-# no window where angie is down.
-acme_link_dir: /etc/ssl/switchback
-acme_bootstrap_days: 3650
+# certbot, plus dig — the hook waits for its own record to become visible
+# rather than sleeping a fixed guess.
+acme_packages:
+  - certbot
+  - bind9-dnsutils
 
-# Service reloaded once the symlink moves and by the renewal deploy hook.
+# --- The zone and its API --------------------------------------------------
+# Set these in the inventory from the vault; they have no safe defaults.
+# acme_dns_zone: ""
+# acme_dns_api_key: ""
+# acme_dns_api_secret: ""
+
+acme_dns_api_base: https://spaceship.dev/api/v1
+
+# Where the hook and the credentials it reads are installed.
+acme_hook_dir: /etc/letsencrypt/hooks
+acme_dns_credentials: /etc/letsencrypt/dns-api.env
+
+# TTL of the challenge record. Short: it exists for about a minute, and a long
+# TTL only means a stale negative answer lingers in a resolver's cache.
+acme_dns_ttl: 60
+
+# How the hook waits for the record to be visible before letting certbot ask
+# Let's Encrypt to look. Polling a public resolver rather than sleeping blind:
+# it is both faster when propagation is quick and safer when it is not.
+acme_dns_check_resolver: 1.1.1.1
+acme_dns_check_tries: 30
+acme_dns_check_interval: 5
+
+# Service reloaded by the renewal deploy hook once a new certificate lands.
 acme_reload_service: angie
 
 # Facts the role needs when the play runs with gather_facts: false.

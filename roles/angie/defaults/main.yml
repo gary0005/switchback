@@ -1,24 +1,17 @@
 ---
 # Every name this node answers to. The first is its primary — the one chains
-# and subscription links address it by; the rest are aliases, such as the apex.
-# All of them are served by one server block and covered by one certificate,
-# and all of them must resolve to this node: http-01 is answered by whichever
-# node the name points at.
+# and subscription links address it by; the rest are aliases, such as the apex
+# this node shares with others. All are served by one server block and covered
+# by one certificate.
 angie_domains: "{{ vpn_domains }}"
 
 angie_conf_dir: /etc/angie
 
-# Directory holding fullchain.pem and privkey.pem. A symlink maintained by the
-# acme role, never a lineage directly: angie will not start without a
-# certificate, and http-01 cannot obtain one until angie is answering on port
-# 80. The link starts on a self-signed placeholder and moves to the real
-# lineage in the same run — so this path is valid before any certificate
-# exists, and angie never has to be restarted onto a different path.
-angie_cert_dir: /etc/ssl/switchback/current
-
-# Where the acme role drops http-01 challenge files. Must match `acme_webroot`.
-# Served on port 80 ahead of the redirect to HTTPS.
-angie_acme_webroot: /var/www/acme
+# Certificate lineage name, matching acme_cert_name. Keyed by inventory
+# hostname rather than by domain, so renaming a domain updates the existing
+# lineage instead of stranding it.
+angie_cert_name: "{{ inventory_hostname }}"
+angie_cert_dir: "/etc/letsencrypt/live/{{ angie_cert_name }}"
 
 # Document root of the public site. A domain serving nothing at / fails the
 # first active probe, so this is load-bearing, not decoration. Populated by

@@ -1,0 +1,8 @@
+---
+# Named for what it does rather than for angie, so it cannot collide with the
+# angie role's own handler: two handlers sharing a name in one play is a
+# silent ambiguity.
+- name: Reload the service fronting the certificate
+  ansible.builtin.service:
+    name: "{{ acme_reload_service }}"
+    state: reloaded

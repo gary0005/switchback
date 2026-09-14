@@ -1,19 +1,21 @@
 ---
 argument_specs:
   main:
-    short_description: Issue a TLS certificate over http-01.
+    short_description: Issue a TLS certificate over dns-01.
     description:
       - Installs certbot and issues one certificate covering every name the
-        node answers to, over http-01.
-      - http-01 rather than dns-01 so no DNS credential has to exist on the
-        node - a node that is broken into cannot then be used to take over the
-        zone. The cost is that every name must resolve to exactly one node,
-        because the challenge is answered by whichever node the name points at.
-      - Runs in two parts. main.yml installs certbot, opens the webroot and
-        writes a self-signed placeholder, because angie will not start without
-        a certificate and certbot cannot obtain one until angie answers on port
-        80. issue.yml runs after angie is up, obtains the certificate and moves
-        the symlink angie serves onto the new lineage.
+        node answers to, answering the dns-01 challenge through the
+        registrar's API with a hook this role installs.
+      - >-
+        dns-01 rather than http-01 because a name may then resolve to several
+        nodes at once - the shared apex does - and because the certificate is
+        obtained before the domain takes any traffic, with port 80 needed only
+        for the redirect. The cost is that every node holds a credential able
+        to write to the zone, which is the largest single risk in this
+        deployment; see the role README.
+      - The hook is a script in this repository rather than a third-party
+        certbot plugin. It runs as root with that credential, so being able to
+        read all of it matters more than the convenience.
       - Idempotency comes from comparing the names the lineage already covers
         against acme_domains, so adding an alias reissues the certificate
         instead of silently leaving the old one in place.
@@ -39,30 +41,72 @@ argument_specs:
             hostname rather than by the first domain, so renaming a domain
             updates the existing lineage instead of stranding it.
         type: str
-      acme_webroot:
+      acme_dns_zone:
         description:
-          - Directory http-01 challenge files are written to and served from.
-            Must match angie_acme_webroot.
+          - The DNS zone challenge records are written into. Names are
+            addressed relative to it, so it must be the registered domain
+            rather than any subdomain.
         type: str
-        default: /var/www/acme
-      acme_link_dir:
+        required: true
+      acme_dns_api_key:
+        description: API key for the zone's provider.
+        type: str
+        required: true
+      acme_dns_api_secret:
+        description: API secret for the zone's provider.
+        type: str
+        required: true
+      acme_dns_api_base:
+        description: Base URL of the DNS provider's API.
+        type: str
+        default: https://spaceship.dev/api/v1
+      acme_dns_credentials:
         description:
-          - Directory holding the placeholder certificate and the `current`
-            symlink angie is pointed at. Must contain angie_cert_dir.
+          - Path of the environment file the hook sources. Written 0600; it
+            holds a credential that can rewrite the zone.
         type: str
-        default: /etc/ssl/switchback
-      acme_bootstrap_days:
-        description: Validity of the self-signed placeholder, in days.
+        default: /etc/letsencrypt/dns-api.env
+      acme_hook_dir:
+        description: Directory the dns-01 hook is installed in.
+        type: str
+        default: /etc/letsencrypt/hooks
+      acme_dns_ttl:
+        description:
+          - TTL of the challenge record. Short on purpose - it lives about a
+            minute, and a long TTL only keeps a stale negative answer cached.
         type: int
-        default: 3650
+        default: 60
+      acme_dns_check_resolver:
+        description:
+          - Resolver the hook polls to confirm the record is visible before
+            letting certbot ask Let's Encrypt to look.
+        type: str
+        default: 1.1.1.1
+      acme_dns_check_tries:
+        description: How many times the hook polls before giving up.
+        type: int
+        default: 30
+      acme_dns_check_interval:
+        description: Seconds between polls.
+        type: int
+        default: 5
+      acme_packages:
+        description:
+          - certbot, plus the tools the hook needs. dig is not optional - the
+            hook waits for its own record rather than sleeping a fixed guess.
+        type: list
+        elements: str
+        default:
+          - certbot
+          - bind9-dnsutils
       acme_config_dir:
         description: certbot configuration directory.
         type: str
         default: /etc/letsencrypt
       acme_reload_service:
         description:
-          - Service reloaded when the symlink moves, and by the renewal deploy
-            hook once a new certificate lands.
+          - Service reloaded when a certificate is issued, and by the renewal
+            deploy hook once a renewed one lands.
         type: str
         default: angie
       acme_required_facts:
