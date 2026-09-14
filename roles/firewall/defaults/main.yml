@@ -9,26 +9,12 @@ firewall_config_file: /etc/nftables.conf
 firewall_ssh_allowed_cidrs: []
 firewall_ssh_port: 22
 
-# User ingress: HTTP/2 over TCP and HTTP/3 over QUIC.
+# User ingress: HTTP/2 over TCP and HTTP/3 over QUIC. This is the complete
+# list of what any node exposes. There is no port for xray because xray binds
+# unix sockets only, and the node-to-node leg of a chain arrives here on 443
+# looking exactly like a user's session.
 firewall_ingress_tcp_ports: [80, 443]
 firewall_ingress_udp_ports: [443]
-
-# --- Inventory coupling ----------------------------------------------------
-# Group names are parameters rather than literals so the role can describe
-# more than one topology per inventory.
-#
-# Only members of the peer group get the reality port opened, and only to
-# each other. The domestic entry node is deliberately not in that group, so
-# "domestic egress hits angie only" is structural rather than a matter of
-# operator discipline.
-firewall_peer_group: eu
-firewall_ingress_groups:
-  - edge
-  - ru
-
-# Deployment value this role reads for its own host: alias of the shared
-# `vpn_relay_port`, which xray listens on.
-firewall_relay_port: "{{ vpn_relay_port }}"
 
 # Facts the role needs when the play runs with gather_facts: false.
 firewall_required_facts:

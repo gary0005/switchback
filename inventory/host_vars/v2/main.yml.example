@@ -1,0 +1,9 @@
+---
+# Offshore exit. Reported as unreachable from the restricted network — the
+# v0-v2 chain is declared regardless, so it is in place the day that changes,
+# and `--tags verify` is what settles whether it actually works.
+ansible_host: 203.0.113.12
+
+vpn_domains:
+  - v2.example.com
+  - example.com

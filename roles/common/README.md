@@ -34,4 +34,4 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 
 ## Why the clock matters
 
-Reality and VLESS both fail the handshake on more than a couple of minutes of drift. `chrony` is installed here for that reason, not for tidiness — clock drift is the most common cause of "everything suddenly stopped working".
+VLESS fails the handshake on more than a couple of minutes of drift. `chrony` is installed here for that reason, not for tidiness — clock drift is the most common cause of "everything suddenly stopped working".

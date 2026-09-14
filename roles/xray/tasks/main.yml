@@ -74,50 +74,9 @@
         path: "{{ xray_stage_dir }}"
         state: absent
 
-# ---------------------------------------------------------------------------
-# Reality keys
-# ---------------------------------------------------------------------------
-# The private key is derived deterministically from the seed; the public key
-# is computed from it by the xray binary. That lets edge compute the exit
-# node's key locally — no delegate_to, no fact cache, no play ordering.
-#
-# shell rather than command: the key derivation pipes python into xray into
-# awk. It only reads, so it neither reports a change nor needs to be skipped
-# in check mode — without check_mode: false the register below would come back
-# empty and every later template would fail on an undefined key.
-- name: Derive reality keypair for every offshore peer
-  ansible.builtin.shell:
-    executable: /bin/bash
-    cmd: |
-      set -euo pipefail
-      PRIV=$(python3 -c \
-        "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" \
-        '{{ __xray_peer_priv_hex }}')
-      PUB=$({{ xray_bin }} x25519 -i "$PRIV" \
-        | awk -F': *' 'tolower($1) ~ /public|password/ {print $2; exit}')
-      printf '%s %s\n' "$PRIV" "$PUB"
-  vars:
-    __xray_peer_priv_hex: "{{ hostvars[item]['xray_reality_priv_hex'] }}"
-  register: __xray_reality_keys
-  changed_when: false
-  check_mode: false
-  loop: "{{ groups[xray_peer_group] | default([]) }}"
-  loop_control:
-    label: "{{ item }}"
-
-- name: Register reality keys as a lookup map
-  ansible.builtin.set_fact:
-    __xray_reality: >-
-      {{ dict(__xray_reality_keys.results
-              | map(attribute='item')
-              | zip(__xray_reality_keys.results
-                    | map(attribute='stdout')
-                    | map('split', ' ')
-                    | map('map', 'trim'))) }}
-
 - name: Deploy xray config
   ansible.builtin.template:
-    src: "config-{{ xray_node_role | trim }}.json.j2"
+    src: config.json.j2
     dest: "{{ xray_dir }}/config.json"
     mode: "0600"
     backup: true

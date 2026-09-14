@@ -60,22 +60,17 @@
   changed_when: false
   check_mode: false
 
+# Both roots are created here so `angie -t` and a reload never depend on the
+# order roles ran in. What goes inside them is another role's business: the
+# site comes from `website`, the payloads from `subscription`.
 - name: Create web roots
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
     mode: "0755"
   loop:
-    - "{{ angie_decoy_root }}"
+    - "{{ angie_site_root }}"
     - "{{ angie_sub_root }}"
-
-# An empty document root is the cheapest way to fail an active probe.
-- name: Deploy decoy site
-  ansible.builtin.template:
-    src: decoy-index.html.j2
-    dest: "{{ angie_decoy_root }}/index.html"
-    mode: "0644"
-    backup: true
 
 - name: Enable angie
   ansible.builtin.service:

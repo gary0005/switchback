@@ -1,0 +1,13 @@
+---
+# Unmanaged: this node already carries live user traffic under a different
+# configuration. It is a member of the `unmanaged` group, so every play skips
+# it — see hosts.yml. Its values are here because peers read them: v0 and v3
+# name it as a chain exit.
+#
+# Until it is taken over, the chains ending here stay out of `vpn_chains_ready`
+# and therefore out of subscriptions: it has no transit inbound listening on
+# the path they would dial.
+ansible_host: 203.0.113.11
+
+vpn_domains:
+  - v1.example.com

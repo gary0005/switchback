@@ -23,50 +23,45 @@ xray_service_limit_nofile: 1000000
 # /tmp: that is world-writable, and everything here is unpacked as root.
 xray_stage_dir: /var/cache/xray-install
 
-# --- Inventory coupling ----------------------------------------------------
-# Group names are parameters rather than literals so the role can describe
-# more than one topology per inventory.
-xray_peer_group: eu        # offshore nodes that may reach each other directly
-xray_exit_group: exit      # nodes that egress to the internet
-xray_entry_group: ru       # domestic ingress nodes
-xray_edge_group: edge      # nodes terminating user TLS
-
-# Which config template a node gets. Derived from group membership by default,
-# so it never has to be set by hand. One of: exit, edge, ru.
-xray_node_role: >-
-  {{ 'exit' if inventory_hostname in groups[xray_exit_group] | default([])
-     else ('ru' if inventory_hostname in groups[xray_entry_group] | default([])
-           else 'edge') }}
+# --- Topology --------------------------------------------------------------
+# The full chain declaration, not just the ready ones: an inbound for a chain
+# whose far end is still unmanaged costs nothing and means taking that node
+# over later touches only the node itself and the subscriptions.
+xray_chains: "{{ vpn_chains }}"
+xray_chain_data: "{{ vpn_chain_data }}"
 
 # --- Deployment values this role reads for its own host --------------------
 # Aliases of the shared `vpn_*` inventory variables. Values read for *other*
 # hosts through hostvars keep the `vpn_*` name in the templates, because role
 # defaults are not in scope for a peer belonging to a different play.
 xray_socket_dir: "{{ vpn_socket_dir }}"
-xray_path_hop1: "{{ vpn_path_hop1 }}"
-xray_path_hop2: "{{ vpn_path_hop2 }}"
-xray_path_hop3: "{{ vpn_path_hop3 }}"
-xray_relay_port: "{{ vpn_relay_port }}"
 
 # --- Users and tier policy -------------------------------------------------
 # Tiers are enforced here, in the inbound client lists — not merely by
 # omitting configs from a subscription file.
 xray_users: "{{ vpn_users }}"
-xray_tier_hop1: "{{ vpn_tier_hop1 }}"
-xray_tier_hop2: "{{ vpn_tier_hop2 }}"
-xray_tier_hop3: "{{ vpn_tier_hop3 }}"
+xray_tier_kinds: "{{ vpn_tier_kinds }}"
 
-# --- Reality ---------------------------------------------------------------
-xray_reality_dest: "www.microsoft.com:443"
-xray_reality_server_names:
-  - www.microsoft.com
-xray_reality_short_id: "{{ vpn_reality_short_id }}"
+# Credential the verify role dials chains with, added to every user-facing
+# inbound. It rides the same inbound a user does, so a check cannot pass on a
+# path users do not take.
+xray_probe_uuid: "{{ vpn_probe_uuid }}"
 
-# --- Service account UUIDs -------------------------------------------------
-# Derived from the seed, same as everything else. Used only for the current
-# host, so unlike the per-peer material these can live in role defaults.
-xray_node_link_uuid: "{{ (vault_seed ~ ':node:ru-to-edge') | to_uuid }}"
-xray_relay_uuid: "{{ (vault_seed ~ ':node:edge-to-exit') | to_uuid }}"
+# --- Egress ----------------------------------------------------------------
+# Applied by the freedom outbound on whichever node a chain exits through.
+# UseIPv4 keeps egress off AAAA records, which is what you want when only the
+# v4 address of a node is known to work.
+xray_freedom_domain_strategy: UseIPv4
+
+# ALPN the node-to-node leg negotiates with the far side's angie. h2 rather
+# than h3: this leg is a long-lived server-to-server stream where QUIC buys
+# nothing, and h2 keeps the failure modes to one transport.
+xray_transit_alpn:
+  - h2
+
+# TLS fingerprint the node-to-node leg presents. The leg has to look like the
+# browser traffic it hides among.
+xray_transit_fingerprint: chrome
 
 # Facts the role needs when the play runs with gather_facts: false.
 xray_required_facts:

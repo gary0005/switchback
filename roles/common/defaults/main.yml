@@ -9,7 +9,7 @@ common_base_packages:
   - python3
   - unattended-upgrades
 
-# Reality and VLESS depend on the clock: more than a couple of minutes of
+# VLESS depends on the clock: more than a couple of minutes of
 # drift breaks the handshake.
 common_time_sync_service: chrony
 

@@ -9,6 +9,16 @@ Static per-user subscription payloads and a human-readable landing page.
 
 No backend: nothing to exploit, nothing to monitor, and every angie node serves the identical set.
 
+## What lands in a user's file
+
+One entry per (chain, ALPN). A chain is addressed at the node that fronts it — its `via` — because that is where the user's TLS terminates; what happens after that is the server's business, and nothing in the link describes it. Labels carry the chain name and the ALPN, so a user reporting "v0-v3-h3 is slow" is naming something you can act on.
+
+Which chains a user gets follows from `subscription_tier_kinds`. That policy is enforced twice: here, by leaving the links out, and in the `xray` role, by leaving the UUID out of the inbound. The second one is the one that matters — the first is convenience.
+
+## Pending chains are not published
+
+`subscription_chains` defaults to `vpn_chains_ready`, which excludes any chain touching an unmanaged node. Such a chain has nothing listening on the path it would dial, so publishing it would hand out a link that cannot work. It appears in subscriptions the run after that node is taken over.
+
 ## The filename is the credential
 
 The token in the path *is* the user's access. That is why `subscription_show_links` defaults to `false` — printing a link writes a credential into the run log and into any CI system that captures it.
@@ -23,7 +33,7 @@ ansible-playbook site.yml --tags subscription -v \
 ## Requirements
 
 * `vault_seed` from the vault.
-* The inventory must define `public_domain` and `vpn_path_hop1`..`hop3` for the edge and entry hosts, because `sub.txt.j2` reads them across plays through `hostvars`.
+* The inventory must define `vpn_chains_ready`, `vpn_chain_data`, `vpn_sub_prefix` and `vpn_domains` for every host fronting a chain, because `sub.txt.j2` reads them across plays through `hostvars`.
 * `subscription_root` must match `angie_sub_root`.
 
 ## Variables
@@ -33,14 +43,15 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | Variable | Default | Purpose |
 |---|---|---|
 | `subscription_users` | `{{ vpn_users }}` | Roster of `{name, tier, rot}` |
-| `subscription_tier_hop1/2/3` | `{{ vpn_tier_hop* }}` | Which tiers may use which chain |
+| `subscription_tier_kinds` | `{{ vpn_tier_kinds }}` | Which chain kinds each tier may use |
+| `subscription_chains` | `{{ vpn_chains_ready }}` | Chains to publish |
+| `subscription_chain_data` | `{{ vpn_chain_data }}` | Per-chain kinds and paths |
+| `subscription_alpns` | `[h2, h3]` | One link per ALPN per chain |
 | `subscription_page_lang` | `en` | Selects `templates/index.<lang>.html.j2` |
 | `subscription_show_links` | `false` | Whether to print the links during the run |
 | `subscription_root` | `/var/www/sub` | Where payloads are written |
-| `subscription_domain` | `{{ public_domain }}` | Domain the links point at |
+| `subscription_domain` | `{{ vpn_domain }}` | Domain the subscription URL itself points at |
 | `subscription_prefix` | `{{ vpn_sub_prefix }}` | Secret path prefix angie serves under |
-| `subscription_edge_group` | `edge` | Nodes serving the 1-hop and 2-hop chains |
-| `subscription_entry_group` | `ru` | Nodes serving the 3-hop chain |
 | `subscription_update_interval` | `12` | Refresh hint for clients, in hours |
 
 ## Example

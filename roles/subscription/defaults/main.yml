@@ -15,21 +15,26 @@ subscription_update_interval: 12
 # `-e subscription_show_links=true -v` when you actually need them.
 subscription_show_links: false
 
-# --- Inventory coupling ----------------------------------------------------
-# Group names are parameters rather than literals so the role can describe
-# more than one topology per inventory.
-subscription_edge_group: edge
-subscription_entry_group: ru
+# --- Topology --------------------------------------------------------------
+# Only chains this repository configures at both ends. A chain whose far end
+# is still unmanaged has nothing listening on the path it would dial, so
+# publishing it would hand out a link that cannot work.
+subscription_chains: "{{ vpn_chains_ready }}"
+subscription_chain_data: "{{ vpn_chain_data }}"
 
-# Deployment values this role reads for its own host. Aliases of the shared
-# `vpn_*` inventory variables. Values read for *other* hosts through hostvars
-# keep the `vpn_*` name in the templates, because role defaults are not in
-# scope for a peer belonging to a different play.
-subscription_domain: "{{ public_domain }}"
+# Each chain is published twice, once per ALPN: h3 is faster on a lossy link,
+# h2 survives where UDP is throttled, and clients pick per attempt.
+subscription_alpns:
+  - h2
+  - h3
+
+# --- Deployment values this role reads for its own host --------------------
+# Aliases of the shared `vpn_*` inventory variables. Values read for *other*
+# hosts through hostvars keep the `vpn_*` name in the templates, because role
+# defaults are not in scope for a peer belonging to a different play.
+subscription_domain: "{{ vpn_domain }}"
 subscription_prefix: "{{ vpn_sub_prefix }}"
 
 # --- Users and tier policy -------------------------------------------------
 subscription_users: "{{ vpn_users }}"
-subscription_tier_hop1: "{{ vpn_tier_hop1 }}"
-subscription_tier_hop2: "{{ vpn_tier_hop2 }}"
-subscription_tier_hop3: "{{ vpn_tier_hop3 }}"
+subscription_tier_kinds: "{{ vpn_tier_kinds }}"

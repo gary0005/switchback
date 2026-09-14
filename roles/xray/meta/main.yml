@@ -3,7 +3,7 @@ galaxy_info:
   role_name: xray
   namespace: switchback
   author: gary0005
-  description: Xray-core install, deterministic Reality keys and per-node routing config.
+  description: Xray-core install and chain-derived routing config on unix sockets.
   license: MIT
   min_ansible_version: "2.16"
   platforms:

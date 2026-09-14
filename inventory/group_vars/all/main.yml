@@ -1,64 +1,120 @@
 ---
 # ---------------------------------------------------------------------------
-# Deterministic secret derivation
+# Topology
 # ---------------------------------------------------------------------------
-# Nothing is kept in state: paths, ports, UUIDs, keys and subscription tokens
-# are all derived from a single vault_seed. The playbook is idempotent and
-# fully reproducible from the repository alone.
+# The deployment is described by a list of chains, not by node classes. Every
+# node runs the same software in the same shape; a chain says who takes the
+# user's traffic (`via`) and who egresses to the internet (`exit`).
+#
+#   via != exit   two hops. The user's TLS terminates on `via`'s angie, which
+#                 hands the stream to the local xray, which dials `exit` over
+#                 the same VLESS+XHTTP/TLS/443 an ordinary client speaks — so
+#                 the second leg is indistinguishable from the first on the
+#                 wire. It arrives at `exit`'s angie, never at its xray.
+#   via == exit   one hop, for testing. Same path shape, no second leg.
+#
+# Names are arbitrary but appear in subscription labels, so keep them terse.
+# Adding a node: one entry in hosts.yml, one host_vars file, and the chains
+# you want below. Nothing else in this repository needs to know about it.
+vpn_chains:
+  # Two hops out of the domestic node.
+  - { name: v0-v1, via: v0, exit: v1 }
+  - { name: v0-v2, via: v0, exit: v2 }
+  - { name: v0-v3, via: v0, exit: v3 }
+  # Two hops between offshore nodes.
+  - { name: v1-v2, via: v1, exit: v2 }
+  - { name: v1-v3, via: v1, exit: v3 }
+  - { name: v3-v1, via: v3, exit: v1 }
+  - { name: v3-v2, via: v3, exit: v2 }
+  # One hop. Test chains: they prove a node's ingress works on its own, and
+  # they are the only thing that isolates "the hop is broken" from "the node
+  # is broken". v0-solo egresses inside the restricted network and is a
+  # reachability probe, not a usable route.
+  - { name: v0-solo, via: v0, exit: v0 }
+  - { name: v2-solo, via: v2, exit: v2 }
+  - { name: v3-solo, via: v3, exit: v3 }
+
+# Chains whose every end this repository actually configures. A chain that
+# terminates on an unmanaged node has no inbound waiting for it, so publishing
+# it would hand users a link that cannot work. Roles use this list; `vpn_chains`
+# stays the full declaration so nothing is lost when the node is taken over.
+vpn_chains_ready: >-
+  {{ vpn_chains
+     | rejectattr('via', 'in', groups['unmanaged'] | default([]))
+     | rejectattr('exit', 'in', groups['unmanaged'] | default([]))
+     | list }}
+
+# ---------------------------------------------------------------------------
+# Deterministic derivation
+# ---------------------------------------------------------------------------
+# Nothing is kept in state: paths, UUIDs and subscription tokens all derive
+# from a single vault_seed, so the deployment is reproducible from this
+# repository alone and any play can run under --limit in isolation.
 # Rotation: bump a user's `rot` (targeted) or vault_seed (everything at once).
 #
-# Naming: `vpn_*` marks deployment-wide data shared by more than one role.
-# Roles alias what they read for their own host into their own namespace
-# (see each role's defaults/main.yml); what is read for *another* host through
-# `hostvars[...]` is referenced by these names directly, because role defaults
-# are only in scope for hosts of the running play and would come back
-# undefined for a peer that belongs to a different play.
+# Keyed by chain name rather than by host because both ends need the same
+# values: `via` dials the path that `exit` is listening on. Deriving from the
+# chain name means each side computes it locally — no cross-host facts, no
+# play ordering. Defined here rather than in a role's defaults because role
+# defaults are not in `hostvars` for a host belonging to another play.
+vpn_chain_data: >-
+  {%- set out = {} -%}
+  {%- for c in vpn_chains -%}
+  {%-   set base = vault_seed ~ ':chain:' ~ c.name -%}
+  {%-   set _ = out.update({c.name: {
+          'via': c.via,
+          'exit': c.exit,
+          'kind': 'test' if c.via == c.exit else 'multi',
+          'path_in': '/' ~ ((base ~ ':in') | hash('sha256'))[:14],
+          'path_transit': '/' ~ ((base ~ ':transit') | hash('sha256'))[:14],
+          'transit_uuid': (base ~ ':transit') | to_uuid,
+        }}) -%}
+  {%- endfor -%}
+  {{ out }}
 
-__host_seed: "{{ vault_seed }}:{{ inventory_hostname }}"
+# Secret prefix angie serves subscriptions under. Deployment-wide rather than
+# per-node so one link keeps working whichever domain a user reaches.
+vpn_sub_prefix: "/{{ ((vault_seed ~ ':subprefix') | hash('sha256'))[:12] }}"
 
-# --- XHTTP paths (one per chain) ------------------------------------------
-# Bound by xray, proxied by angie, published by subscription.
-vpn_path_hop1: "/{{ ((__host_seed ~ ':path:hop1') | hash('sha256'))[:14] }}"
-vpn_path_hop2: "/{{ ((__host_seed ~ ':path:hop2') | hash('sha256'))[:14] }}"
-vpn_path_hop3: "/{{ ((__host_seed ~ ':path:hop3') | hash('sha256'))[:14] }}"
+# Credential the verify role dials chains with. A fixed identity rather than
+# a borrowed user's: the checks then prove the route works without depending
+# on who is currently on the roster, and revoking a user can never quietly
+# disable the thing that would have caught the breakage.
+vpn_probe_uuid: "{{ (vault_seed ~ ':probe') | to_uuid }}"
 
-# --- Secret prefix angie serves subscriptions under ------------------------
-vpn_sub_prefix: "/{{ ((__host_seed ~ ':subprefix') | hash('sha256'))[:12] }}"
+# Address the node is seen leaving from, which is what a chain check compares
+# against. Defaults to the address Ansible reaches it on; override it in
+# host_vars where a provider egresses from a different address than it
+# accepts management traffic on.
+vpn_egress_ip: "{{ ansible_host }}"
 
-# --- Random port for the reality link between offshore nodes ---------------
-# xray listens on it, firewall opens it to the peer set.
-vpn_relay_port: >-
-  {{ 20000 + ((((__host_seed ~ ':relayport') | hash('sha256'))[:6] | int(base=16)) % 40000) }}
+# Primary name of this node: the one it is addressed by in chains and in
+# subscription links. The rest of `vpn_domains` are aliases served by the same
+# angie and covered by the same certificate.
+vpn_domain: "{{ vpn_domains[0] }}"
 
-# --- Reality: private key as hex, public key computed on the host ----------
-# xray x25519 can derive the public key from the private one, so edge computes
-# the exit node's key locally — no cross-host facts, no play ordering needed.
-vpn_reality_priv_hex: "{{ (__host_seed ~ ':reality:priv') | hash('sha256') }}"
-vpn_reality_short_id: "{{ ((__host_seed ~ ':reality:sid') | hash('sha256'))[:8] }}"
-
-# --- Unix socket directory shared between the xray and angie roles ---------
-# Pinned by RuntimeDirectory= in the xray systemd unit.
+# Unix socket directory shared between the xray and angie roles. Pinned by
+# RuntimeDirectory= in the xray systemd unit.
 vpn_socket_dir: /run/xray
 
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
 # Consumed by two roles: xray enforces the tiers in its inbound client lists,
-# subscription renders the links. Tiers are enforced server side — a `main`
-# user's UUID is absent from the 3-hop inbound, not merely missing from their
-# subscription file.
+# subscription renders the links. Tiers are enforced server side — a user
+# without the `test` kind is absent from those inbounds' client lists, not
+# merely missing the links from their subscription file.
 #
-# tier: main — main chain only (2 hops)
-# tier: all  — all three chains
-# rot        — rotation counter: bump it to reissue the UUID and the link
+# rot — rotation counter: bump it to reissue this user's UUID and link.
 vpn_users:
-  - { name: alice, tier: all, rot: 1 }
-  - { name: bob, tier: main, rot: 1 }
+  - { name: boss, tier: all, rot: 1 }
+  - { name: alice, tier: main, rot: 1 }
 
-# Which tiers may use which chain.
-vpn_tier_hop1: [all]
-vpn_tier_hop2: [all, main]
-vpn_tier_hop3: [all]
+# Which chain kinds each tier may use. `test` chains are single-hop and exist
+# to isolate faults, so they go to whoever debugs the deployment, not to users.
+vpn_tier_kinds:
+  main: [multi]
+  all: [multi, test]
 
 # ---------------------------------------------------------------------------
 # Deployment settings

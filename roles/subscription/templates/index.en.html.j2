@@ -1,4 +1,12 @@
 {%- set token = ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] -%}
+{#- Routes are counted, not named: the node names are internal, and a user's
+    page is the last place to describe the topology. -#}
+{%- set kinds = subscription_tier_kinds[item['tier']] -%}
+{%- set avail = subscription_chains | map(attribute='name')
+                | map('extract', subscription_chain_data)
+                | selectattr('kind', 'in', kinds) | list -%}
+{%- set n_multi = avail | selectattr('kind', 'eq', 'multi') | list | length -%}
+{%- set n_test = avail | selectattr('kind', 'eq', 'test') | list | length -%}
 <!doctype html>
 <!-- {{ ansible_managed }} -->
 <html lang="en">
@@ -33,17 +41,16 @@
 
 <h2>What is inside</h2>
 <ul>
-{% if item['tier'] in subscription_tier_hop2 %}
-  <li><b>2hop</b> — the main chain; use this one by default.</li>
+{% if n_multi > 0 %}
+  <li><b>{{ n_multi }} two-hop route{{ 's' if n_multi > 1 else '' }}</b> — traffic
+      leaves the network somewhere other than where it entered. Use these;
+      if one is slow, try another.</li>
 {% endif %}
-{% if item['tier'] in subscription_tier_hop1 %}
-  <li><b>1hop</b> — for testing: shorter route, but the exit IP is the same as the entry IP.</li>
+{% if n_test > 0 %}
+  <li><b>{{ n_test }} single-hop route{{ 's' if n_test > 1 else '' }}</b> — for
+      testing only: the exit address is the entry address.</li>
 {% endif %}
-{% if item['tier'] in subscription_tier_hop3 %}
-  <li><b>3hop</b> — enters via the domestic node; slower, but useful where a
-      direct connection to an offshore IP does not get through.</li>
-{% endif %}
-  <li>Every chain ships in two flavours: <b>h2</b> and <b>h3</b>. h3 is faster on
+  <li>Every route ships in two flavours: <b>h2</b> and <b>h3</b>. h3 is faster on
       a poor connection, h2 is more reliable where UDP is throttled.</li>
 </ul>
 

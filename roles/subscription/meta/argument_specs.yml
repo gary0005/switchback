@@ -10,6 +10,9 @@ argument_specs:
         to monitor, and every angie node serves the identical set.
       - The filename is the credential. Anyone holding the URL holds the
         access, which is why the links are not printed by default.
+      - Only chains configured at both ends are published. A chain ending on
+        an unmanaged node has nothing listening on the path it would dial, so
+        including it would hand out a link that cannot work.
     options:
       subscription_root:
         description:
@@ -34,20 +37,30 @@ argument_specs:
             do want them.
         type: bool
         default: false
-      subscription_edge_group:
-        description: Inventory group of nodes serving the 1-hop and 2-hop chains.
-        type: str
-        default: edge
-      subscription_entry_group:
-        description: Inventory group of nodes serving the 3-hop chain.
-        type: str
-        default: ru
+      subscription_chains:
+        description:
+          - Chains to publish - normally vpn_chains_ready rather than the full
+            declaration. Each is addressed at the node fronting it.
+        type: list
+        elements: dict
+      subscription_chain_data:
+        description:
+          - Per-chain derived values keyed by chain name, carrying kind and
+            the user-facing path. Computed in the inventory.
+        type: dict
+      subscription_alpns:
+        description:
+          - ALPNs each chain is published under, one link per ALPN.
+        type: list
+        elements: str
+        default:
+          - h2
+          - h3
       subscription_domain:
         description:
-          - Domain the links point at. Defaults to the node's inventory
-            public_domain.
+          - Domain the subscription links themselves point at. Defaults to
+            this node's primary name.
         type: str
-        default: "{{ public_domain }}"
       subscription_prefix:
         description: Secret path prefix angie serves the payloads under.
         type: str
@@ -61,22 +74,15 @@ argument_specs:
             type: str
             required: true
           tier:
-            description: Tier deciding which chains the user may use.
+            description: Tier deciding which kinds of chain the user may use.
             type: str
             required: true
           rot:
             description: Rotation counter; bump it to reissue the link.
             type: int
             required: true
-      subscription_tier_hop1:
-        description: Tiers allowed on the 1-hop chain.
-        type: list
-        elements: str
-      subscription_tier_hop2:
-        description: Tiers allowed on the 2-hop chain.
-        type: list
-        elements: str
-      subscription_tier_hop3:
-        description: Tiers allowed on the 3-hop chain.
-        type: list
-        elements: str
+      subscription_tier_kinds:
+        description:
+          - Maps a tier name to the chain kinds it may use. Must agree with
+            the xray role, which enforces the same policy in its client lists.
+        type: dict

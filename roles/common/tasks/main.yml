@@ -12,7 +12,7 @@
     update_cache: true
     cache_valid_time: 3600
 
-# Reality and VLESS depend on the clock: more than a couple of minutes of
+# VLESS depends on the clock: more than a couple of minutes of
 # drift breaks the handshake. This is the number one cause of
 # "everything suddenly stopped working".
 - name: Ensure time synchronisation is running

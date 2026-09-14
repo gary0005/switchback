@@ -4,12 +4,13 @@ argument_specs:
     short_description: Apply a default-drop nftables ruleset.
     description:
       - >-
-        Renders a ruleset whose open ports follow from the node's group
-        membership. Ingress nodes get 80 and 443; peer-group members get the
-        reality relay port opened to each other and to nobody else.
-      - A node outside the peer group can never reach the relay port, which
-        makes "domestic egress hits angie only" structural rather than a
-        matter of operator discipline.
+        Renders a default-drop ruleset exposing SSH and the web ports, and
+        nothing else. Every node gets the same one, because every node runs
+        the same thing: angie on 443 in front of xray on unix sockets.
+      - There is no port for xray, and no exception for peer nodes. A chain's
+        second leg reaches the far node on 443 like any user's session, so
+        "nothing talks to xray directly" holds by construction rather than by
+        operator discipline.
     options:
       firewall_packages:
         description: Packages providing nftables.
@@ -33,30 +34,15 @@ argument_specs:
         type: int
         default: 22
       firewall_ingress_tcp_ports:
-        description: TCP ports opened on ingress nodes.
+        description: TCP ports opened on every node.
         type: list
         elements: int
         default: [80, 443]
       firewall_ingress_udp_ports:
-        description: UDP ports opened on ingress nodes, for HTTP/3.
+        description: UDP ports opened on every node, for HTTP/3.
         type: list
         elements: int
         default: [443]
-      firewall_peer_group:
-        description:
-          - Inventory group whose members may reach each other's relay port.
-        type: str
-        default: eu
-      firewall_ingress_groups:
-        description: Inventory groups whose members take user traffic on 80 and 443.
-        type: list
-        elements: str
-        default:
-          - edge
-          - ru
-      firewall_relay_port:
-        description: Port the xray reality relay listens on.
-        type: str
       firewall_required_facts:
         description:
           - Facts the role needs. Gathered with gather_subset=min when the

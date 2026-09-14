@@ -1,14 +1,21 @@
 ---
-# Name angie terminates TLS for. Defaults to the node's inventory
-# `public_domain`, which is what the acme role requests the certificate for.
-angie_domain: "{{ public_domain }}"
+# Every name this node answers to. The first is its primary — the one chains
+# and subscription links address it by; the rest are aliases, typically the
+# apex shared with other nodes. All of them are served by one server block and
+# covered by one certificate.
+angie_domains: "{{ vpn_domains }}"
 
 angie_conf_dir: /etc/angie
-angie_cert_dir: "/etc/letsencrypt/live/{{ angie_domain }}"
 
-# An empty document root is the cheapest way to fail an active probe, so the
-# decoy is not decoration.
-angie_decoy_root: /var/www/decoy
+# Certificate lineage name. Keyed by inventory hostname rather than by domain
+# so renaming a domain does not strand the old lineage — see the acme role.
+angie_cert_name: "{{ inventory_hostname }}"
+angie_cert_dir: "/etc/letsencrypt/live/{{ angie_cert_name }}"
+
+# Document root of the public site. A domain serving nothing at / fails the
+# first active probe, so this is load-bearing, not decoration. Populated by
+# the website role; must match `website_root`.
+angie_site_root: /var/www/site
 
 # Where the subscription role drops its rendered payloads. Must match
 # `subscription_root`.
@@ -38,20 +45,18 @@ angie_repo_base_url: https://download.angie.software/angie
 # Empty means the key is trusted on first use — set it to pin the repository.
 angie_repo_key_checksum: ""
 
-# --- Inventory coupling ----------------------------------------------------
-# Group name is a parameter rather than a literal so the role can describe
-# more than one topology per inventory. Edge nodes front two chains (hop1 and
-# hop2); everything else fronts hop3.
-angie_edge_group: edge
+# --- Topology --------------------------------------------------------------
+# angie publishes one location per path this node serves: the user-facing path
+# of every chain it fronts, and the transit path of every chain it is the far
+# end of. Both proxy to a unix socket; neither xray nor any port behind angie
+# is reachable from the network.
+angie_chains: "{{ vpn_chains }}"
+angie_chain_data: "{{ vpn_chain_data }}"
 
 # Deployment values this role reads for its own host. Aliases of the shared
 # `vpn_*` inventory variables.
 angie_socket_dir: "{{ vpn_socket_dir }}"
 angie_sub_prefix: "{{ vpn_sub_prefix }}"
-angie_hop_paths:
-  hop1: "{{ vpn_path_hop1 }}"
-  hop2: "{{ vpn_path_hop2 }}"
-  hop3: "{{ vpn_path_hop3 }}"
 
 # Facts the role needs when the play runs with gather_facts: false.
 angie_required_facts:

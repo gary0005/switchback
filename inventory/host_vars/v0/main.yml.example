@@ -1,0 +1,17 @@
+---
+# Domestic node. It is the only ingress that stays reachable from inside the
+# restricted network, so it fronts every chain leaving the country — and it
+# never egresses on a user's behalf except on its own test chain.
+ansible_host: 203.0.113.10
+
+# Names angie terminates TLS for, and that the certificate covers. The first
+# is this node's primary: chains and subscription links address it by that
+# name. The apex is an alias — it round-robins across several nodes, so it is
+# fine for the site and useless for a chain, which needs to land on a node it
+# names.
+#
+# Read across plays through hostvars, so it belongs in the inventory rather
+# than in a role's defaults.
+vpn_domains:
+  - v0.example.com
+  - example.com

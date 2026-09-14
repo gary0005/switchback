@@ -21,7 +21,7 @@ argument_specs:
           - unattended-upgrades
       common_time_sync_service:
         description:
-          - Service kept running to synchronise the clock. Reality and VLESS
+          - Service kept running to synchronise the clock. VLESS
             both break on more than a couple of minutes of drift.
         type: str
         default: chrony

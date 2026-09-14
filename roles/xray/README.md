@@ -1,26 +1,40 @@
 # xray
 
-Xray-core install, deterministic Reality keys, and the routing config matching the node's part in the topology.
+Xray-core install and the routing config implied by the chains that name this node.
 
 **Outcome:** a pinned Xray-core binary at `xray_bin`, a `config.json` validated by `xray run -test` before it is written, and a running systemd unit.
-**Idempotent:** yes. The installed version is read off the binary, so the download runs once per version bump; key derivation only reads and never reports a change.
+**Idempotent:** yes. The installed version is read off the binary, so the download runs once per version bump.
 **Atomic:** no — binary installation and configuration are separate steps.
 **Rollback:** `config.json` and the unit file are backed up on change (`backup: true`). Pin `xray_version` back and re-run to downgrade the binary.
 
-## How the Reality keys work
+## Nodes have no classes
 
-The private key is derived deterministically from `vault_seed`, and the public key is computed from it by the `xray` binary on the host. An edge node can therefore compute an exit node's public key locally — no `delegate_to`, no fact cache, no dependency on play ordering, and any play can be run with `--limit` in isolation.
+There is one template for every node. What a node does follows from the chain list: it fronts the chains it is the `via` of, terminates the chains it is the `exit` of, and a node commonly does both. Adding a node changes the inventory and nothing here.
 
-Peer material is read through `hostvars` using the inventory-level `vpn_*` names. Role defaults are only in scope for hosts of the running play, so a peer belonging to a different play would come back undefined if those values lived in `defaults/main.yml`.
+For each chain naming this node, the config grows:
+
+| Chain names this node as | Inbound | Routed to |
+|---|---|---|
+| `via`, and `via != exit` | `in-<chain>` on `<chain>-in.sock` | `out-<chain>`, dialling the exit node |
+| `via`, and `via == exit` | `in-<chain>` on `<chain>-in.sock` | `direct` |
+| `exit`, and `via != exit` | `transit-<chain>` on `<chain>-transit.sock` | `direct` |
+
+## Nothing binds a port
+
+Every inbound listens on a unix socket in `xray_socket_dir`; angie owns 443 and proxies into them. The second leg of a two-hop chain is a VLESS+XHTTP outbound over TLS to the far node's **443**, so it arrives at that node's angie exactly like a user's session would — same port, same ALPN, same certificate, a domain that serves a real site.
+
+That is the point. Traffic arriving directly at xray on a port of its own is what gets spotted and blocked; there is no such port here, and the `verify` role asserts there never will be. The systemd unit drops `CAP_NET_BIND_SERVICE` for the same reason — if a config needs it back, that config is binding a port.
 
 ## Tiers
 
-Tiers are enforced here, in the inbound client lists. A `tier: main` user does not merely lack the 3-hop config in their subscription — their UUID is absent from that inbound altogether.
+Tiers are enforced here, in the inbound client lists. A user whose tier does not cover a chain's kind has no UUID in that inbound at all — not merely a missing link in their subscription file.
+
+The probe identity (`xray_probe_uuid`) is added to every user-facing inbound, so the `verify` role exercises the same inbound users do rather than a parallel one that could drift out of step with it.
 
 ## Requirements
 
 * `vault_seed` from the vault.
-* The inventory must define `vpn_reality_priv_hex`, `vpn_reality_short_id`, `vpn_relay_port`, `vpn_path_hop1`..`hop3` and `vpn_socket_dir` for every host, because they are read across plays.
+* The inventory must define `vpn_chains`, `vpn_chain_data`, `vpn_socket_dir`, `vpn_probe_uuid` and, for every host named in a chain, `vpn_domains` — they are read across plays through `hostvars`, where role defaults are not in scope.
 
 ## Variables
 
@@ -28,16 +42,16 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `xray_version` | `25.3.6` | Release to install |
-| `xray_archive_checksum` | `""` | SHA256 of the release archive; **empty means unverified** |
-| `xray_node_role` | derived from groups | Which config template applies: `exit`, `edge` or `ru` |
-| `xray_peer_group` | `eu` | Offshore nodes that may reach each other |
-| `xray_exit_group` | `exit` | Nodes egressing to the internet |
-| `xray_entry_group` | `ru` | Domestic ingress nodes |
-| `xray_edge_group` | `edge` | Nodes terminating user TLS |
+| `xray_version` | `26.3.27` | Release to install |
+| `xray_archive_checksum` | pinned SHA256 | Verifies the archive; **update it with the version** |
+| `xray_chains` | `{{ vpn_chains }}` | The full chain declaration, pending ones included |
+| `xray_chain_data` | `{{ vpn_chain_data }}` | Per-chain paths, kinds and transit credentials |
 | `xray_users` | `{{ vpn_users }}` | Roster of `{name, tier, rot}` |
-| `xray_tier_hop1/2/3` | `{{ vpn_tier_hop* }}` | Which tiers may use which chain |
-| `xray_reality_dest` | `www.microsoft.com:443` | Host Reality borrows its handshake from |
+| `xray_tier_kinds` | `{{ vpn_tier_kinds }}` | Which chain kinds each tier may use |
+| `xray_probe_uuid` | `{{ vpn_probe_uuid }}` | Identity the `verify` role dials with |
+| `xray_freedom_domain_strategy` | `UseIPv4` | Egress DNS behaviour on exit nodes |
+| `xray_transit_alpn` | `[h2]` | ALPN of the node-to-node leg |
+| `xray_socket_dir` | `{{ vpn_socket_dir }}` | Where the inbound sockets live |
 | `xray_bin` / `xray_dir` / `xray_share_dir` | see specs | Install paths |
 | `xray_stage_dir` | `/var/cache/xray-install` | Root-owned staging area for the archive |
 | `xray_required_facts` | `[os_family]` | Facts gathered if the play sets `gather_facts: false` |
@@ -49,18 +63,20 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
   ansible.builtin.import_role:
     name: xray
   vars:
-    xray_version: "25.3.6"
+    xray_version: "26.3.27"
     xray_archive_checksum: "sha256:<digest from the release .dgst file>"
 ```
 
-## Verify the download
+## When you bump the version
 
-`xray_archive_checksum` is empty by default, which means the archive is **not** verified — and the binary it contains runs as root. Take the SHA256 from the release's `.dgst` file and pin it:
+The checksum is pinned, and the binary runs as root — so take the new digest from the release's `.dgst` file in the same edit:
 
 ```bash
-curl -sL https://github.com/XTLS/Xray-core/releases/download/v25.3.6/Xray-linux-64.zip.dgst
+curl -sL https://github.com/XTLS/Xray-core/releases/download/v26.3.27/Xray-linux-64.zip.dgst
 ```
 
-## Known gap
+`xray run -test -config` validates the rendered config before it replaces the running one, which catches a schema change in the release rather than letting it take the node down. Recent versions renamed `network` to `method` in `streamSettings` while keeping the old spelling working; if a future release drops it, that validation is where you will see it.
 
-`xray x25519 -i` changed its output between major versions (`Public key:` became `Password:`). The parser handles both; a third spelling would not be caught immediately, so check this after upgrading `xray_version`.
+## Pending chains
+
+A chain whose far end is an unmanaged node still gets its inbound and outbound here. It costs nothing, and it means taking that node over later touches only the node itself and the subscriptions — nothing on the nodes already running.

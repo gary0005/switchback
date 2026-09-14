@@ -1,10 +1,12 @@
-{#- Config matrix: (chain) x (h2, h3). The tier decides which chains apply.
-    Peer values use the inventory-level vpn_* names: edge and entry nodes are
-    handled in different plays, so role defaults are not in their hostvars. -#}
+{#- One entry per (chain, ALPN). A chain is addressed at the node that fronts
+    it — its `via` — because that is where the user's TLS terminates; what
+    happens after that is the server's business and nothing in the link
+    describes it. Peer values use the inventory-level vpn_* names: `via` may
+    belong to another play, where role defaults are not in scope. -#}
 {%- set uuid = (vault_seed ~ ':user:' ~ item['name'] ~ ':' ~ item['rot']) | to_uuid -%}
 {%- set uris = [] -%}
-{#- One place that knows the URI shape, so the three chains cannot drift. -#}
-{%- macro vless_uri(host, domain, path, alpn, label) -%}
+{#- One place that knows the URI shape, so chains cannot drift apart. -#}
+{%- macro vless_uri(domain, path, alpn, label) -%}
 {%- set params = {
       'encryption': 'none',
       'security': 'tls',
@@ -16,30 +18,15 @@
       'path': path,
       'mode': 'packet-up',
     } -%}
-vless://{{ uuid }}@{{ domain }}:443?{{ params | urlencode }}#{{ host }}-{{ label }}-{{ alpn }}
+vless://{{ uuid }}@{{ domain }}:443?{{ params | urlencode }}#{{ label }}
 {%- endmacro -%}
-{%- for h in groups[subscription_edge_group] | default([]) -%}
-{%-   set dom = hostvars[h]['public_domain'] -%}
-{%-   if item['tier'] in subscription_tier_hop1 -%}
-{%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h]['vpn_path_hop1'] -%}
-{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '1hop')) -%}
-{%-     endfor -%}
-{%-   endif -%}
-{%-   if item['tier'] in subscription_tier_hop2 -%}
-{%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h]['vpn_path_hop2'] -%}
-{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '2hop')) -%}
+{%- for c in subscription_chains -%}
+{%-   set d = subscription_chain_data[c.name] -%}
+{%-   if d['kind'] in subscription_tier_kinds[item['tier']] -%}
+{%-     set dom = hostvars[c.via]['vpn_domain'] -%}
+{%-     for alpn in subscription_alpns -%}
+{%-       set _ = uris.append(vless_uri(dom, d['path_in'], alpn, c.name ~ '-' ~ alpn)) -%}
 {%-     endfor -%}
 {%-   endif -%}
 {%- endfor -%}
-{%- if item['tier'] in subscription_tier_hop3 -%}
-{%-   for h in groups[subscription_entry_group] | default([]) -%}
-{%-     set dom = hostvars[h]['public_domain'] -%}
-{%-     for alpn in ['h2', 'h3'] -%}
-{%-       set p = hostvars[h]['vpn_path_hop3'] -%}
-{%-       set _ = uris.append(vless_uri(h, dom, p, alpn, '3hop')) -%}
-{%-     endfor -%}
-{%-   endfor -%}
-{%- endif -%}
 {{ uris | join('\n') | b64encode }}

@@ -1,5 +1,0 @@
----
-ansible_host: 203.0.113.20
-
-# No public_domain: only reality on a random port is exposed, so this node
-# never terminates TLS for a name.

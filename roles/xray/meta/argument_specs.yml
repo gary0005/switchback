@@ -3,12 +3,17 @@ argument_specs:
   main:
     short_description: Install and configure Xray-core.
     description:
-      - Installs a pinned Xray-core release, derives the Reality keypair for
-        every offshore peer from the deployment seed, and renders the routing
-        configuration matching the node's part in the topology.
+      - >-
+        Installs a pinned Xray-core release and renders the routing
+        configuration implied by the chains that name this node. Nodes have no
+        classes: a node fronts the chains it is the C(via) of and terminates
+        the chains it is the C(exit) of, and a node can do both.
+      - Every inbound is a unix socket. The role never binds a network port,
+        because angie owns 443 and a chain's second leg arrives there as
+        ordinary HTTPS.
       - Tiers are enforced here, in the inbound client lists. A user whose
-        tier excludes a chain has no UUID in that inbound at all, rather than
-        merely lacking the config in their subscription file.
+        tier excludes a kind of chain has no UUID in that inbound at all,
+        rather than merely lacking the config in their subscription file.
     options:
       xray_version:
         description: Xray-core release to install.
@@ -53,46 +58,35 @@ argument_specs:
         description: LimitNOFILE for the systemd unit.
         type: int
         default: 1000000
-      xray_node_role:
-        description:
-          - Which config template the node gets. Derived from group
-            membership by default, so it rarely needs setting by hand.
-        type: str
-        choices:
-          - exit
-          - edge
-          - ru
-      xray_peer_group:
-        description: Inventory group of offshore nodes that may reach each other directly.
-        type: str
-        default: eu
-      xray_exit_group:
-        description: Inventory group of nodes that egress to the internet.
-        type: str
-        default: exit
-      xray_entry_group:
-        description: Inventory group of domestic ingress nodes.
-        type: str
-        default: ru
-      xray_edge_group:
-        description: Inventory group of nodes terminating user TLS.
-        type: str
-        default: edge
       xray_socket_dir:
         description: Unix socket directory shared with angie.
         type: str
-      xray_path_hop1:
-        description: XHTTP path of the 1-hop inbound on this node.
-        type: str
-      xray_path_hop2:
-        description: XHTTP path of the 2-hop inbound on this node.
-        type: str
-      xray_path_hop3:
-        description: XHTTP path of the 3-hop inbound on this node.
-        type: str
-      xray_relay_port:
-        description: Port the reality relay inbound listens on.
-        type: str
+      xray_chains:
+        description:
+          - Chain declaration. Each entry needs a name, the node fronting it
+            (via) and the node egressing on it (exit); via equal to exit is a
+            single-hop test chain.
+        type: list
+        elements: dict
+        options:
+          name:
+            description: Chain name. Appears in tags, socket names and labels.
+            type: str
+            required: true
+          via:
+            description: Inventory hostname terminating the user's TLS.
+            type: str
+            required: true
+          exit:
+            description: Inventory hostname egressing to the internet.
+            type: str
+            required: true
+      xray_chain_data:
+        description:
+          - Per-chain derived values keyed by chain name, each carrying kind,
+            path_in, path_transit and transit_uuid. Computed in the inventory
+            so both ends of a chain derive the same values independently.
+        type: dict
       xray_users:
         description:
           - User roster. Each entry needs name, tier and rot.
@@ -104,42 +98,43 @@ argument_specs:
             type: str
             required: true
           tier:
-            description: Tier deciding which chains the user may use.
+            description: Tier deciding which kinds of chain the user may use.
             type: str
             required: true
           rot:
             description: Rotation counter; bump it to reissue the UUID.
             type: int
             required: true
-      xray_tier_hop1:
-        description: Tiers allowed on the 1-hop chain.
+      xray_tier_kinds:
+        description:
+          - Maps a tier name to the chain kinds it may use, for example
+            {main - [multi], all - [multi, test]}.
+        type: dict
+      xray_probe_uuid:
+        description:
+          - Credential the verify role dials chains with, added to every
+            user-facing inbound so the checks exercise the same inbound users
+            do rather than a parallel one that could drift out of step.
+        type: str
+      xray_freedom_domain_strategy:
+        description: domainStrategy of the freedom outbound used for egress.
+        type: str
+        default: UseIPv4
+        choices:
+          - AsIs
+          - UseIP
+          - UseIPv4
+          - UseIPv6
+      xray_transit_alpn:
+        description: ALPN offered on the node-to-node leg.
         type: list
         elements: str
-      xray_tier_hop2:
-        description: Tiers allowed on the 2-hop chain.
-        type: list
-        elements: str
-      xray_tier_hop3:
-        description: Tiers allowed on the 3-hop chain.
-        type: list
-        elements: str
-      xray_reality_dest:
-        description: Host Reality borrows its TLS handshake from.
+        default:
+          - h2
+      xray_transit_fingerprint:
+        description: uTLS fingerprint presented on the node-to-node leg.
         type: str
-        default: "www.microsoft.com:443"
-      xray_reality_server_names:
-        description: SNI values accepted by the Reality inbound.
-        type: list
-        elements: str
-      xray_reality_short_id:
-        description: Reality short ID for this node.
-        type: str
-      xray_node_link_uuid:
-        description: Service account UUID for the entry to edge link.
-        type: str
-      xray_relay_uuid:
-        description: Service account UUID for the edge to exit reality link.
-        type: str
+        default: chrome
       xray_required_facts:
         description:
           - Facts the role needs. Gathered with gather_subset=min when the

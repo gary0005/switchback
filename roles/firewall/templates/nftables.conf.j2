@@ -1,27 +1,17 @@
-{#- All computation happens up here, above the shebang, so the whitespace
-    control on these tags cannot eat into the ruleset below. -#}
-{#- Hosts allowed to reach the reality port, minus ourselves. -#}
-{%- set peers = (groups[firewall_peer_group] | default([])) | difference([inventory_hostname]) -%}
-{%- set is_peer = inventory_hostname in groups[firewall_peer_group] | default([]) -%}
-{#- Hosts that take user traffic on 80/443. -#}
-{%- set ingress_hosts = [] -%}
-{%- for group in firewall_ingress_groups -%}
-{%-   set _ = ingress_hosts.extend(groups[group] | default([])) -%}
-{%- endfor -%}
+{#- Kept above the shebang: a Jinja comment between `ansible_managed` and the
+    first line of content would swallow the newline after it and comment that
+    line out.
+
+    There is no peer set and no relay port. Every node exposes exactly SSH and
+    the web ports, because the only listener behind them is angie: xray binds
+    unix sockets, and a chain's second leg arrives as ordinary HTTPS on 443
+    like any user's. If this file ever grows a port for xray, the design has
+    been broken somewhere upstream. -#}
 #!/usr/sbin/nft -f
 {{ ansible_managed | comment }}
 flush ruleset
 
 table inet filter {
-{% if is_peer and peers | length > 0 %}
-    # Offshore nodes only. The domestic entry node is not in the peer group,
-    # so it can never land here — "domestic egress hits angie only" is
-    # structural, not a matter of operator discipline.
-    set eu_peers {
-        type ipv4_addr
-        elements = { {{ peers | map('extract', hostvars, 'ansible_host') | join(', ') }} }
-    }
-{% endif %}
 
     chain input {
         type filter hook input priority 0; policy drop;
@@ -38,16 +28,10 @@ table inet filter {
         tcp dport {{ firewall_ssh_port | int }} accept
 {% endif %}
 
-{% if inventory_hostname in ingress_hosts %}
-        # User ingress: HTTP/2 over TCP and HTTP/3 over QUIC.
+        # User ingress: HTTP/2 over TCP and HTTP/3 over QUIC. The rules are
+        # family-agnostic, so they cover v6 ingress as well as v4.
         tcp dport { {{ firewall_ingress_tcp_ports | join(', ') }} } accept
         udp dport { {{ firewall_ingress_udp_ports | join(', ') }} } accept
-{% endif %}
-
-{% if is_peer and peers | length > 0 %}
-        # Reality link between offshore nodes on a random port.
-        tcp dport {{ firewall_relay_port | int }} ip saddr @eu_peers accept
-{% endif %}
     }
 
     chain forward { type filter hook forward priority 0; policy drop; }

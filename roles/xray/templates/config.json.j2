@@ -1,0 +1,121 @@
+{#- One template for every node: what a node does is decided by which chains
+    name it, not by a class it belongs to. The whole document is assembled as
+    a Jinja structure and piped through to_nice_json at the end, so it cannot
+    emit trailing commas or half-quoted values however the topology changes.
+
+    Every inbound listens on a unix socket. Nothing here binds a network port
+    — angie owns 443, and a chain's second leg arrives as ordinary HTTPS.
+
+    Peer values are read through hostvars under their inventory-level `vpn_*`
+    names: a peer may belong to another play, where this role's defaults are
+    not in scope. -#}
+{%- set me = inventory_hostname -%}
+{%- set ingress = xray_chains | selectattr('via', 'eq', me) | map(attribute='name') | list -%}
+{%- set transit = xray_chains | selectattr('exit', 'eq', me)
+                              | rejectattr('via', 'eq', me) | map(attribute='name') | list -%}
+
+{%- set inbounds = [] -%}
+{%- set outbounds = [{
+      'tag': 'direct',
+      'protocol': 'freedom',
+      'settings': {'domainStrategy': xray_freedom_domain_strategy},
+    }] -%}
+{#- Blocks first: a later rule cannot resurrect what these two drop. -#}
+{%- set rules = [
+      {'type': 'field', 'protocol': ['bittorrent'], 'outboundTag': 'block'},
+      {'type': 'field', 'ip': ['geoip:private'], 'outboundTag': 'block'},
+    ] -%}
+
+{#- Chains this node fronts. The client list *is* the tier enforcement: a user
+    whose tier does not cover this kind of chain has no UUID here at all. -#}
+{%- for name in ingress -%}
+{%-   set c = xray_chain_data[name] -%}
+{%-   set clients = [] -%}
+{%-   for u in xray_users if c.kind in xray_tier_kinds[u.tier] -%}
+{%-     set _ = clients.append({
+          'id': (vault_seed ~ ':user:' ~ u.name ~ ':' ~ u.rot) | to_uuid,
+          'email': u.name ~ '@' ~ name,
+          'level': 0,
+        }) -%}
+{%-   endfor -%}
+{#-   The probe identity is present on every chain this node fronts, so the
+      checks exercise the same inbound a user does rather than a parallel one
+      that could drift out of step with it. -#}
+{%-   set _ = clients.append({
+        'id': xray_probe_uuid, 'email': 'probe@' ~ name, 'level': 0}) -%}
+{%-   set _ = inbounds.append({
+        'tag': 'in-' ~ name,
+        'listen': xray_socket_dir ~ '/' ~ name ~ '-in.sock,0666',
+        'protocol': 'vless',
+        'settings': {'clients': clients, 'decryption': 'none'},
+        'streamSettings': {
+          'network': 'xhttp',
+          'xhttpSettings': {'path': c.path_in, 'mode': 'packet-up'},
+        },
+      }) -%}
+{%-   if c.kind == 'test' -%}
+{%-     set _ = rules.append({
+          'type': 'field', 'inboundTag': ['in-' ~ name], 'outboundTag': 'direct'}) -%}
+{%-   else -%}
+{#-     Second leg. Deliberately the same VLESS+XHTTP over TLS/443 a client
+        speaks: it terminates on the far node's angie, so on the wire it is
+        another HTTPS session to a domain that serves a real site. -#}
+{%-     set peer = hostvars[c.exit]['vpn_domain'] -%}
+{%-     set _ = outbounds.append({
+          'tag': 'out-' ~ name,
+          'protocol': 'vless',
+          'settings': {
+            'vnext': [{
+              'address': peer,
+              'port': 443,
+              'users': [{'id': c.transit_uuid, 'encryption': 'none'}],
+            }],
+          },
+          'streamSettings': {
+            'network': 'xhttp',
+            'security': 'tls',
+            'tlsSettings': {
+              'serverName': peer,
+              'alpn': xray_transit_alpn,
+              'fingerprint': xray_transit_fingerprint,
+            },
+            'xhttpSettings': {
+              'host': peer,
+              'path': c.path_transit,
+              'mode': 'packet-up',
+            },
+          },
+        }) -%}
+{%-     set _ = rules.append({
+          'type': 'field', 'inboundTag': ['in-' ~ name], 'outboundTag': 'out-' ~ name}) -%}
+{%-   endif -%}
+{%- endfor -%}
+
+{#- Chains this node is the far end of. One service credential per chain, so a
+    leaked one exposes a single route rather than the mesh. -#}
+{%- for name in transit -%}
+{%-   set c = xray_chain_data[name] -%}
+{%-   set _ = inbounds.append({
+        'tag': 'transit-' ~ name,
+        'listen': xray_socket_dir ~ '/' ~ name ~ '-transit.sock,0666',
+        'protocol': 'vless',
+        'settings': {
+          'clients': [{'id': c.transit_uuid, 'email': 'transit@' ~ name, 'level': 0}],
+          'decryption': 'none',
+        },
+        'streamSettings': {
+          'network': 'xhttp',
+          'xhttpSettings': {'path': c.path_transit, 'mode': 'packet-up'},
+        },
+      }) -%}
+{%-   set _ = rules.append({
+        'type': 'field', 'inboundTag': ['transit-' ~ name], 'outboundTag': 'direct'}) -%}
+{%- endfor -%}
+
+{%- set _ = outbounds.append({'tag': 'block', 'protocol': 'blackhole'}) -%}
+{{ {
+     'log': {'loglevel': 'warning', 'access': 'none'},
+     'inbounds': inbounds,
+     'outbounds': outbounds,
+     'routing': {'domainStrategy': 'AsIs', 'rules': rules},
+   } | to_nice_json }}

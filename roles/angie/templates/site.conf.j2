@@ -1,34 +1,57 @@
+{#- Everything computed stays above `ansible_managed`: a Jinja tag right after
+    it swallows the newline it ends on and comments out the first real line.
+
+    Two kinds of location, one shape: the user-facing path of every chain this
+    node fronts, and the transit path of every chain it terminates. A transit
+    request is an ordinary client request that happens to come from another
+    node, so it must not be told apart here — same proxy settings, same
+    upstream shape, nothing distinguishing in the config. -#}
+{%- set me = inventory_hostname -%}
+{%- set served = [] -%}
+{%- for c in angie_chains if c.via == me -%}
+{%-   set _ = served.append({'id': c.name ~ '-in',
+                             'path': angie_chain_data[c.name]['path_in']}) -%}
+{%- endfor -%}
+{%- for c in angie_chains if c.exit == me and c.via != me -%}
+{%-   set _ = served.append({'id': c.name ~ '-transit',
+                             'path': angie_chain_data[c.name]['path_transit']}) -%}
+{%- endfor -%}
 {{ ansible_managed | comment }}
-{% set is_edge = inventory_hostname in groups[angie_edge_group] | default([]) %}
-{% set hops = ['hop1', 'hop2'] if is_edge else ['hop3'] %}
-{% for hop in hops %}
-upstream xray_{{ hop }} {
-    server unix:{{ angie_socket_dir }}/{{ hop }}.sock;
+{% for s in served %}
+upstream xray_{{ s.id | replace('-', '_') }} {
+    server unix:{{ angie_socket_dir }}/{{ s.id }}.sock;
     keepalive {{ angie_upstream_keepalive | int }};
 }
 {% endfor %}
 
 server {
+    # reuseport may appear only once per address:port across the whole
+    # configuration. Keeping every name of this node in one server block is
+    # what keeps that true — a second server block on 443 would have to omit
+    # it, and omitting it silently is how you end up debugging QUIC.
     listen 443 ssl reuseport;
     listen 443 quic reuseport;
     listen [::]:443 ssl reuseport;
     listen [::]:443 quic reuseport;
 
     http2 on;
-    server_name {{ angie_domain }};
+    http3 on;
+
+    server_name {{ angie_domains | join(' ') }};
 
     ssl_certificate     {{ angie_cert_dir }}/fullchain.pem;
     ssl_certificate_key {{ angie_cert_dir }}/privkey.pem;
 
+    # Clients only try h3 once they have been told it exists.
     add_header Alt-Svc 'h3=":443"; ma=86400' always;
 
     # XHTTP sends bodies of unknown length — the default 1M limit tears the
     # upload stream on the first sizeable request.
     client_max_body_size {{ angie_client_max_body_size }};
+{% for s in served %}
 
-{% for hop in hops %}
-    location {{ angie_hop_paths[hop] }} {
-        proxy_pass              http://xray_{{ hop }};
+    location {{ s.path }} {
+        proxy_pass              http://xray_{{ s.id | replace('-', '_') }};
         proxy_http_version      1.1;
         proxy_set_header        Connection "";
         proxy_set_header        Host $host;
@@ -41,8 +64,8 @@ server {
         proxy_read_timeout      {{ angie_proxy_timeout }};
         proxy_send_timeout      {{ angie_proxy_timeout }};
     }
-
 {% endfor %}
+
     location {{ angie_sub_prefix }}/ {
         alias {{ angie_sub_root }}/;
         default_type text/plain;
@@ -51,7 +74,7 @@ server {
     }
 
     location / {
-        root {{ angie_decoy_root }};
+        root {{ angie_site_root }};
         index index.html;
     }
 }
