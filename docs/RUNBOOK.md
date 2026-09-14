@@ -42,10 +42,10 @@ Then edit all four `inventory/host_vars/*/main.yml` files. Each needs the node's
 ansible_host: 198.51.100.7
 vpn_domains:
   - v0.example.com      # primary: chains and subscription links use this
-  - example.com         # alias: the shared apex, if this node serves it
+  - example.com         # alias, on one node only — see below
 ```
 
-The first domain is the node's primary. The rest are aliases and go into the same certificate. An apex shared across nodes is a DNS round robin — fine for the site, useless for a chain, which has to reach the node it names.
+The first domain is the node's primary. The rest are aliases and go into the same certificate. Put the apex on exactly one node: certificates come over http-01, which is answered by whichever node the name resolves to, so a name pointing at several nodes renews by luck.
 
 **Chains and users** live in [`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The chain list is already written; what you need to set is the roster and the notification address:
 
@@ -93,7 +93,7 @@ The vault is an encrypted YAML file that Ansible decrypts in memory for the leng
 openssl rand -hex 32                       # this is your vault_seed
 
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
-$EDITOR /tmp/vault.yml                     # seed, and the DNS provider token
+$EDITOR /tmp/vault.yml                     # the seed, and nothing else
 uv run ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
 shred -u /tmp/vault.yml                    # rm -P on macOS
 ```
@@ -102,40 +102,32 @@ shred -u /tmp/vault.yml                    # rm -P on macOS
 
 To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
 
-The DNS token needs `Zone:DNS:Edit` on the zone — certbot proves domain ownership with it over dns-01.
+One value is all that goes in. Certificates are issued over http-01, where the node proves it owns a name by answering on its own port 80, so no DNS credential exists anywhere in this deployment — and a node that gets broken into cannot be used to take over the domain.
 
 ## 5. DNS
 
-```bash
-cd terraform
-cp terraform.tfvars.example terraform.tfvars   # gitignored
-$EDITOR terraform.tfvars                        # token, zone id, names, addresses
-terraform init
-terraform apply
-cd ..
-```
+Records are maintained by hand, wherever your domain's nameservers point. There is no Terraform: the records change when you add a node or move a provider, which is rare enough that automating it costs more than it saves. `--tags verify` is what notices if they drift.
 
-**One record per name a node answers to**, which means `records` here has to mirror `vpn_domains` across all the `host_vars` files. Nothing checks that for you: get it wrong and the symptom is certbot failing on a name that does not resolve, or a browser complaining about a certificate that does not cover the name it was given.
+**One A record per name in `vpn_domains`, and each name points at exactly one node.** That constraint comes from http-01: Let's Encrypt asks whichever address the name resolves to, and only one node holds the challenge file. A name pointing at two nodes renews successfully about half the time — and you find out sixty days later.
 
-A node that does not carry the apex in its `vpn_domains` must not appear among the apex records either. Apex records are a round robin — a third of visitors would land on a node with no certificate for that name and no site behind it. That is why an unmanaged node usually has one record and not two.
+So for four nodes plus an apex on one of them:
+
+| Name | Points at |
+|---|---|
+| `v0.example.com` | v0 |
+| `v1.example.com` | v1 |
+| `v2.example.com` | v2 |
+| `v3.example.com` | v3 |
+| `example.com` | v3 only |
 
 Records must resolve **before** the first run — certificates cannot be issued until they do:
 
 ```bash
-dig +short v0.example.com
+for n in v0 v1 v2 v3; do echo "$n: $(dig +short A $n.example.com)"; done
+dig +short A example.com        # exactly one address
 ```
 
-### If a record already exists
-
-Terraform assumes it created everything in `records`. A name that is already in the zone — likely for any node that was doing something before this repository existed — makes `apply` fail with "record already exists", and it fails the whole plan, not just that record. Import it into state first:
-
-```bash
-terraform import \
-  'cloudflare_dns_record.node["v1.example.com|203.0.113.11"]' \
-  <zone_id>/<record_id>
-```
-
-The key in brackets is `name|content`, exactly as the `for_each` builds it. `record_id` comes from the Cloudflare dashboard or its API.
+If the apex already points at several nodes from an earlier setup, remove the extra records now. That is the one mistake this design cannot absorb.
 
 ## 6. First run, one node at a time
 
@@ -147,7 +139,7 @@ uv run ansible-playbook site.yml --limit v3 --skip-tags verify --ask-vault-pass
 
 `--limit` restricts the run to one node. `--skip-tags verify` leaves the checks out: this node's two-hop chains point at nodes that do not exist yet, and the check would correctly fail on them.
 
-Expect a few minutes, most of it certbot waiting for the DNS record to propagate. Then look at it yourself:
+Expect a few minutes. Watch for what certbot does around the middle of the run: angie comes up on a self-signed placeholder, certbot answers the challenge on port 80, and the symlink angie serves moves onto the real certificate. Only the first run does this; afterwards the lineage is already there. Then look at it yourself:
 
 ```bash
 curl -I https://v3.example.com

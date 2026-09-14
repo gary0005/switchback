@@ -1,6 +1,6 @@
 # switchback
 
-Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terraform handles DNS only. Everything must be reproducible from this repo.
+Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS is maintained by hand at the registrar; the `verify` role asserts it still matches the inventory. Everything else must be reproducible from this repo.
 
 ## Hard rules
 
@@ -25,14 +25,16 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terr
 - angie: `proxy_buffering off`, `proxy_request_buffering off`, `client_max_body_size 0`. Missing any of the three → hangs or torn uploads.
 - `reuseport` may appear only **once per address:port** across all server blocks. With more than one `server {}` on 443, only the first carries it.
 - xray unit needs `PrivateTmp=no`, or angie stops seeing the unix socket.
-- `chrony` is mandatory: Reality and VLESS break on minutes of clock drift.
+- `chrony` is mandatory: VLESS breaks on minutes of clock drift.
 - A document root that serves nothing at `/` fails the first active probe.
 - certbot: use `--cert-name` when a cert covers several names, otherwise adding a SAN silently does nothing (the `creates:` guard still matches).
 - A Jinja comment or tag directly after `{{ ansible_managed | comment }}` eats the newline it ends on and comments out the first real line. Keep computation and explanation above it.
+- http-01 means **every name must resolve to exactly one node** — the challenge is answered by whichever node the name points at, so a name on two addresses renews by luck. The apex therefore lives on one node, and `verify` asserts it.
+- acme runs in two parts for a reason: angie will not start without a certificate, and certbot cannot get one until angie answers on 80. `main.yml` writes a self-signed placeholder and points `/etc/ssl/switchback/current` at it; `issue.yml`, after angie is up, obtains the real one and moves the link. Never point angie at a lineage directly.
 
 ## Tooling
 
-- Use the **ansible-know** MCP for module/collection docs and CoP practice, **context7** for Angie, certbot, Xray and the Cloudflare provider. Check before writing; Angie and the Cloudflare provider both moved recently (Cloudflare v5 renamed `cloudflare_record` → `cloudflare_dns_record`, and `name` is now the FQDN).
+- Use the **ansible-know** MCP for module/collection docs and CoP practice, **context7** for Angie, certbot and Xray. Check before writing rather than trusting recall; these move.
 - Ansible runs from `.venv/` (gitignored) via `uv run`.
 
 ## Checks before saying it works

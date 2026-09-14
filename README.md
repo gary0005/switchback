@@ -1,6 +1,6 @@
 # switchback
 
-Ansible for a multi-hop [Xray](https://github.com/XTLS/Xray-core) deployment fronted by [Angie](https://angie.software/) over HTTP/2 and HTTP/3. Terraform is used for DNS only.
+Ansible for a multi-hop [Xray](https://github.com/XTLS/Xray-core) deployment fronted by [Angie](https://angie.software/) over HTTP/2 and HTTP/3. DNS records are kept by hand at the registrar; the `verify` role asserts they still match the inventory.
 
 ## Topology
 
@@ -33,6 +33,8 @@ Adding a node is one entry in `hosts.yml`, one `host_vars` file, and the chains 
 
 **Tiers are enforced server side.** A user whose tier excludes single-hop chains does not merely lack those links; their UUID is absent from those inbounds.
 
+**No DNS credential reaches a node.** Certificates come over http-01, so a node proves it owns a name by answering on its own port 80 — there is no zone API key to steal from a compromised server. The price is that every name resolves to exactly one node, which is why the apex sits on a single node rather than round-robining.
+
 **Unmanaged nodes are excluded structurally.** A node in the `unmanaged` group is skipped by every play — it carries live traffic under someone else's configuration. Its peers still read its domain and paths out of the inventory, and chains touching it stay out of subscriptions until it is taken over, because nothing is listening at the far end yet.
 
 ## Layout
@@ -43,7 +45,7 @@ inventory/
 ├── group_vars/all/
 │   ├── ansible.yml              connection settings
 │   ├── main.yml                 chains, seed-derived data, users, settings
-│   └── vault.yml                encrypted; vault_seed and provider credentials
+│   └── vault.yml                encrypted; holds vault_seed and nothing else
 └── host_vars/<host>/
     ├── main.yml.example         committed; placeholder addresses and domains
     └── main.yml                 gitignored; the real ansible_host and vpn_domains
@@ -90,8 +92,10 @@ shred -u /tmp/vault.yml
 #    nothing for a connection made to an address.
 ssh-keyscan -T 10 -H 203.0.113.10 >> ~/.ssh/known_hosts
 
-# 4. DNS — records must resolve before certificates are issued
-cd terraform && terraform init && terraform apply && cd ..
+# 4. DNS, by hand at the registrar. One A record per name in vpn_domains,
+#    each pointing at exactly one node — http-01 is answered by whichever
+#    node a name resolves to. They must resolve before the first run.
+dig +short v0.example.com
 
 # 5. Deploy
 ansible-playbook site.yml --ask-vault-pass
@@ -108,10 +112,10 @@ The last play checks what the first one built: it asserts the node exposes nothi
 | Reissue one user's UUID and link | set `rot: 2` for that user, then `--tags users` |
 | Change a user's tier | `tier: main` to `tier: all` and back, then `--tags users` |
 | Add a chain | one entry under `vpn_chains:`, then a full run |
-| Add a node | `hosts.yml`, `host_vars/<host>/main.yml`, its chains, a DNS record |
+| Add a node | `hosts.yml`, `host_vars/<host>/main.yml` and its `.example`, its chains, a DNS record |
 | Take over an unmanaged node | remove it from the `unmanaged` group, run, then `--tags users` |
 | Rotate every path and token | change `vault_seed` |
-| Change a domain | edit `host_vars/<host>/main.yml` and `terraform/terraform.tfvars` |
+| Change a domain | edit `host_vars/<host>/main.yml`, then the record at the registrar |
 | Check without changing | `--tags verify` |
 | Print subscription links | `--tags subscription -v -e subscription_show_links=true` |
 
@@ -125,7 +129,7 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 **Host key checking is on.** Disabling it would accept any key on first connection, which hands an on-path attacker a root shell on the nodes this repository exists to keep private. Seed `known_hosts` from a channel you trust.
 
-**Never commit an unencrypted vault.** `pre-commit install` wires up `detect-secrets` and `gitleaks`; the same checks run in CI.
+**Never commit an unencrypted vault.** `pre-commit install` wires up `detect-secrets` and `gitleaks`; the same checks run in CI. The vault holds one value, `vault_seed` — certificates need no credential, so there is nothing else in it.
 
 **Domains are not secrets, but they are not public either.** Everything committed here uses `example.com` and RFC 5737 addresses: real addresses and domains live in `host_vars/<host>/main.yml`, which is gitignored, next to the committed `main.yml.example`. Back those files up somewhere — they are not in the repository, and losing them means reconstructing the inventory by hand.
 
@@ -146,6 +150,10 @@ Everything in this repository is English except the user-facing subscription pag
 **`PrivateTmp=no` in the xray unit.** With `PrivateTmp=yes`, systemd namespaces both `/dev/shm` and `/tmp`, and angie stops seeing the unix socket.
 
 **Clock accuracy.** VLESS depends on it; a couple of minutes of drift breaks the handshake. `chrony` is installed by the `common` role for that reason, not for tidiness.
+
+**A name resolving to two nodes.** http-01 is answered by whichever node the name points at, and only one of them holds the challenge file, so renewal starts failing at random sixty days later. `--tags verify` asserts this.
+
+**Port 80 closed.** It is what renewal runs on. Closing it breaks certificates two months after the fact.
 
 **A non-empty document root.** The site under `/var/www/site` is not a decoration — a domain serving nothing at `/` fails the first active probe.
 
@@ -171,6 +179,7 @@ There is no Molecule coverage yet. See "Known gaps".
 * Revoking a user does not delete their already-rendered subscription file; remove it from `/var/www/sub` by hand.
 * The `website` role adds and updates files but does not prune ones deleted from the source.
 * No monitoring beyond `--tags verify` on demand. Angie can expose `/status` as JSON — worth wiring up a node_exporter and an alert on certificate expiry.
+* DNS is not code. `--tags verify` catches a record that disagrees with the inventory, but nothing creates the records for you.
 * The live check leans on an external echo service (`verify_echo_url`) to learn the egress address.
 
 ## License
