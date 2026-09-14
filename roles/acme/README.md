@@ -47,6 +47,10 @@ It reads `targets.json`, a map of name → ssh targets rendered from the **inven
 
 > The `remove` branch passes `ssh -n`. Without it ssh inherits the loop's stdin and swallows the remaining targets, so only the first node is cleaned up. `add` is safe because its stdin is already taken by the pipe feeding the file's content.
 
+## One node at a time
+
+certbot takes a single global lock, so the tasks that invoke it carry `throttle: 1`. Without it Ansible starts them for every host at once and all but the first fail with *"Another instance of Certbot is already running"* — which looks like a stray process and is really just parallelism.
+
 ## Renewal is not unattended
 
 Nothing on a node notices an expiring certificate, and there is no certbot timer anywhere. **Certificates renew only when this playbook runs.**

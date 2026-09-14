@@ -2,6 +2,10 @@
 # Obtains or renews the certificate on the controller, then installs it on the
 # node. Runs after angie is up: http-01 is answered by angie on port 80, out
 # of the webroot the hook writes into.
+#
+# Everything that calls certbot carries `throttle: 1`. certbot holds one
+# global lock, so without it the nodes race each other and all but the first
+# fail with "Another instance of Certbot is already running".
 
 # What makes issuing idempotent is comparing the names the lineage already
 # covers, not the presence of a file. A `creates:` guard matches as soon as
@@ -16,6 +20,7 @@
   check_mode: false
   delegate_to: localhost
   become: false
+  throttle: 1
 
 - name: Request or extend the certificate
   ansible.builtin.command:
@@ -41,6 +46,10 @@
   changed_when: true
   delegate_to: localhost
   become: false
+  # certbot takes a single global lock, so two nodes issuing at once means one
+  # of them dies with "Another instance of Certbot is already running". Every
+  # task that invokes it runs one host at a time.
+  throttle: 1
 
 # certbot's own default is 30 days. Nothing here renews unattended, so the
 # margin is widened: it has to survive however long passes between two runs
