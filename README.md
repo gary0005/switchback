@@ -66,7 +66,6 @@ The `vpn_*` layer is not decoration. Role defaults are only in scope for hosts o
 ## Usage
 
 ```bash
-ansible-galaxy collection install -r requirements.yml
 pip install pre-commit && pre-commit install
 
 # 1. Nodes and chains. The real host_vars are gitignored, so start from the
