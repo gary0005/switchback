@@ -1,12 +1,13 @@
 ---
-# Certificates are issued over dns-01, answered through the registrar's API by
-# a hook this role installs. That buys two things http-01 cannot: a name may
-# resolve to several nodes at once — the shared apex does — and a certificate
-# is obtained before the domain takes any traffic, with port 80 needed only
-# for the redirect.
+# Certificates are issued on the controller, not on the nodes, and only the
+# resulting files are shipped out. dns-01 needs a credential that can write to
+# the zone, and that credential is account-wide at this registrar — so a node
+# holding it would hand an intruder every domain in the account. Keeping it on
+# one machine you control means a compromised node leaks its own certificate
+# and nothing else.
 #
-# It costs one thing, and it is not small: every node holds a credential that
-# can write to the zone. See the README.
+# What it costs: renewal is not unattended. Nothing on a node will notice an
+# expiring certificate, so the playbook has to be run — see the README.
 
 # Every name the certificate covers — this node's primary plus its aliases.
 acme_domains: "{{ vpn_domains }}"
@@ -21,13 +22,17 @@ acme_cert_name: "{{ inventory_hostname }}"
 # role fail loudly rather than register a bogus address.
 # acme_email: ""
 
-acme_config_dir: /etc/letsencrypt
+# --- On the controller -----------------------------------------------------
+# Everything certbot owns lives here: its config, the lineages, the hook and
+# the credential. Deliberately outside the repository, so no `git add -A` can
+# ever sweep a private key or an API key into a commit.
+acme_local_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.local/share/switchback/acme"
 
-# certbot, plus dig — the hook waits for its own record to become visible
-# rather than sleeping a fixed guess.
-acme_packages:
-  - certbot
-  - bind9-dnsutils
+# --- On the node -----------------------------------------------------------
+# Where the two files are installed. Not /etc/letsencrypt: certbot is not
+# installed here and nothing on the node renews anything, so borrowing its
+# layout would only suggest otherwise.
+acme_node_cert_dir: "/etc/ssl/switchback/{{ acme_cert_name }}"
 
 # --- The zone and its API --------------------------------------------------
 # Set these in the inventory from the vault; they have no safe defaults.
@@ -36,10 +41,6 @@ acme_packages:
 # acme_dns_api_secret: ""
 
 acme_dns_api_base: https://spaceship.dev/api/v1
-
-# Where the hook and the credentials it reads are installed.
-acme_hook_dir: /etc/letsencrypt/hooks
-acme_dns_credentials: /etc/letsencrypt/dns-api.env
 
 # TTL of the challenge record. Short: it exists for about a minute, and a long
 # TTL only means a stale negative answer lingers in a resolver's cache.
@@ -52,9 +53,10 @@ acme_dns_check_resolver: 1.1.1.1
 acme_dns_check_tries: 30
 acme_dns_check_interval: 5
 
-# Service reloaded by the renewal deploy hook once a new certificate lands.
-acme_reload_service: angie
+# Renew anything expiring within this many days. Let's Encrypt certificates
+# last 90; certbot's own default is 30, and the margin matters more here
+# because nothing renews unless somebody runs the playbook.
+acme_renew_days: 45
 
-# Facts the role needs when the play runs with gather_facts: false.
-acme_required_facts:
-  - os_family
+# Service reloaded on the node when a new certificate lands.
+acme_reload_service: angie

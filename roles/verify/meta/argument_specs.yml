@@ -60,11 +60,22 @@ argument_specs:
             two TLS handshakes before the first byte.
         type: int
         default: 25
+      verify_no_credential_paths:
+        description:
+          - Directories searched for a DNS credential that should not exist on
+            a node. Certificates are issued on the controller precisely so
+            that no node holds a key able to rewrite the zone.
+        type: list
+        elements: str
+      verify_no_credential_patterns:
+        description: Filename patterns treated as a credential if found.
+        type: list
+        elements: str
       verify_domains:
         description:
-          - Names this node answers to. Each must resolve to this node and to
-            exactly one address, or certificate renewal breaks - silently, and
-            not until the current certificate expires.
+          - Names this node answers to. Each must resolve to this node, among
+            others - the apex is shared, and dns-01 does not care which node a
+            visitor reaches.
         type: list
         elements: str
       verify_node_address:

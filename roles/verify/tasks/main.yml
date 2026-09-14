@@ -76,6 +76,29 @@
          | map('regex_findall', '[0-9]+') | flatten | map('int') | unique
          | difference(verify_expected_ports) | list }}
 
+# The whole reason certificates are issued on the controller is that this
+# credential is account-wide at the registrar: a node holding it would hand an
+# intruder every domain in the account. Nothing should ever put it here.
+- name: Look for a DNS credential that should not be on a node
+  ansible.builtin.find:
+    paths: "{{ verify_no_credential_paths }}"
+    patterns: "{{ verify_no_credential_patterns }}"
+    file_type: file
+  register: __verify_credentials
+  check_mode: false
+
+- name: Assert no DNS credential is present on the node
+  ansible.builtin.assert:
+    that: __verify_credentials.files | length == 0
+    fail_msg: >-
+      Found what looks like a DNS API credential on this node:
+      {{ __verify_credentials.files | map(attribute='path') | join(', ') }}.
+      Certificates are issued on the controller precisely so that no node
+      holds a key that can rewrite the zone. Remove it and find out what put
+      it there.
+    success_msg: No DNS credential on this node.
+    quiet: true
+
 # ---------------------------------------------------------------------------
 # DNS — the zone and the inventory still agree
 # ---------------------------------------------------------------------------

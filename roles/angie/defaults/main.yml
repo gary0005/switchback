@@ -11,7 +11,12 @@ angie_conf_dir: /etc/angie
 # hostname rather than by domain, so renaming a domain updates the existing
 # lineage instead of stranding it.
 angie_cert_name: "{{ inventory_hostname }}"
-angie_cert_dir: "/etc/letsencrypt/live/{{ angie_cert_name }}"
+
+# Where the acme role installs the two files. Not under /etc/letsencrypt:
+# certbot is not installed on the node and nothing here renews anything, so
+# borrowing its layout would only suggest otherwise. Must match
+# `acme_node_cert_dir`.
+angie_cert_dir: "/etc/ssl/switchback/{{ angie_cert_name }}"
 
 # Document root of the public site. A domain serving nothing at / fails the
 # first active probe, so this is load-bearing, not decoration. Populated by

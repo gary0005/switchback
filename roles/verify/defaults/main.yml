@@ -37,6 +37,18 @@ verify_probe_dir: /var/cache/xray-probe
 verify_probe_startup: 10
 verify_probe_timeout: 25
 
+# --- Credentials that must not be here -------------------------------------
+# Certificates are issued on the controller because the registrar's API key is
+# account-wide: a node holding it would expose every domain in the account, not
+# just this one. This check is what keeps that from quietly regressing.
+verify_no_credential_paths:
+  - /etc/letsencrypt
+  - /etc/ssl/switchback
+verify_no_credential_patterns:
+  - "*.env"
+  - "*dns*api*"
+  - "*credentials*"
+
 # --- DNS -------------------------------------------------------------------
 # There is no Terraform holding the zone, so nothing else notices when the
 # records and the inventory disagree. This check does, and it checks what

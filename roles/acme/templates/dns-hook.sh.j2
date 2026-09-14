@@ -3,18 +3,19 @@
 # certbot's dns-01 hook, called twice per name: once to publish the challenge
 # and once to take it down again.
 #
-#   {{ acme_hook_dir }}/dns-hook.sh add
-#   {{ acme_hook_dir }}/dns-hook.sh remove
+#   {{ acme_local_dir }}/dns-hook.sh add
+#   {{ acme_local_dir }}/dns-hook.sh remove
 #
-# Written by hand rather than using a third-party certbot plugin: this runs as
-# root with a credential that can rewrite the zone, so it is worth being able
-# to read the whole thing. The API is two calls.
+# Runs on the controller, beside certbot — never on a node. Written by hand
+# rather than using a third-party certbot plugin: it handles a credential that
+# can rewrite the zone, so it is worth being able to read the whole thing. The
+# API is two calls.
 set -euo pipefail
 
 action="${1:?usage: $0 add|remove}"
 
 # shellcheck source=/dev/null
-. "{{ acme_dns_credentials }}"
+. "{{ acme_local_dir }}/dns-api.env"
 
 # CERTBOT_IDENTIFIER is the current name; CERTBOT_DOMAIN is what older certbot
 # called it. Accept either, so a version bump does not silently break renewal.

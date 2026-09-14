@@ -1,21 +1,22 @@
 ---
 argument_specs:
   main:
-    short_description: Issue a TLS certificate over dns-01.
+    short_description: Issue a TLS certificate over dns-01, on the controller.
     description:
-      - Installs certbot and issues one certificate covering every name the
-        node answers to, answering the dns-01 challenge through the
-        registrar's API with a hook this role installs.
+      - Issues one certificate per node covering every name that node answers
+        to, and installs the resulting files on it. certbot runs on the
+        controller; the node never sees the DNS credential.
       - >-
         dns-01 rather than http-01 because a name may then resolve to several
         nodes at once - the shared apex does - and because the certificate is
-        obtained before the domain takes any traffic, with port 80 needed only
-        for the redirect. The cost is that every node holds a credential able
-        to write to the zone, which is the largest single risk in this
-        deployment; see the role README.
+        obtained before the domain takes any traffic. Issuing centrally rather
+        than per node because the registrar's key is account-wide: a node
+        holding it would expose every domain in the account. What it costs is
+        unattended renewal - nothing on a node notices an expiring
+        certificate, so the playbook has to be run. See the role README.
       - The hook is a script in this repository rather than a third-party
-        certbot plugin. It runs as root with that credential, so being able to
-        read all of it matters more than the convenience.
+        certbot plugin. It handles a credential that can rewrite the zone, so
+        being able to read all of it matters more than the convenience.
       - Idempotency comes from comparing the names the lineage already covers
         against acme_domains, so adding an alias reissues the certificate
         instead of silently leaving the old one in place.
@@ -60,16 +61,24 @@ argument_specs:
         description: Base URL of the DNS provider's API.
         type: str
         default: https://spaceship.dev/api/v1
-      acme_dns_credentials:
+      acme_local_dir:
         description:
-          - Path of the environment file the hook sources. Written 0600; it
-            holds a credential that can rewrite the zone.
+          - Directory on the controller holding certbot's configuration, the
+            lineages, the hook and the credential. Outside the repository on
+            purpose, so no `git add -A` can sweep a private key into a commit.
         type: str
-        default: /etc/letsencrypt/dns-api.env
-      acme_hook_dir:
-        description: Directory the dns-01 hook is installed in.
+      acme_node_cert_dir:
+        description:
+          - Directory the certificate is installed into on the node. Must
+            match angie_cert_dir.
         type: str
-        default: /etc/letsencrypt/hooks
+      acme_renew_days:
+        description:
+          - Renew anything expiring within this many days. Wider than
+            certbot's own 30, because nothing renews unless the playbook is
+            run - it has to survive the gap between two runs.
+        type: int
+        default: 45
       acme_dns_ttl:
         description:
           - TTL of the challenge record. Short on purpose - it lives about a
@@ -90,30 +99,9 @@ argument_specs:
         description: Seconds between polls.
         type: int
         default: 5
-      acme_packages:
-        description:
-          - certbot, plus the tools the hook needs. dig is not optional - the
-            hook waits for its own record rather than sleeping a fixed guess.
-        type: list
-        elements: str
-        default:
-          - certbot
-          - bind9-dnsutils
-      acme_config_dir:
-        description: certbot configuration directory.
-        type: str
-        default: /etc/letsencrypt
       acme_reload_service:
         description:
-          - Service reloaded when a certificate is issued, and by the renewal
-            deploy hook once a renewed one lands.
+          - Service reloaded on the node when a new or renewed certificate is
+            installed.
         type: str
         default: angie
-      acme_required_facts:
-        description:
-          - Facts the role needs. Gathered with gather_subset=min when the
-            play runs with gather_facts disabled.
-        type: list
-        elements: str
-        default:
-          - os_family

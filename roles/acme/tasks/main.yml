@@ -1,74 +1,70 @@
 ---
-- name: Ensure ansible_facts used by role
-  ansible.builtin.setup:
-    gather_subset: min
-  when: not ansible_facts.keys() | list |
-    intersect(acme_required_facts) == acme_required_facts
+# Issuing happens on the controller; the node only receives two files. Every
+# task below that talks to certbot is delegated to localhost and runs without
+# become — it works inside $HOME and has no business asking for sudo on your
+# own machine.
+- name: Check that certbot is installed on the controller
+  ansible.builtin.command: certbot --version
+  register: __acme_certbot
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  run_once: true
 
-- name: Install certbot and the tools the hook needs
-  ansible.builtin.apt:
-    name: "{{ acme_packages }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
+- name: Fail with something actionable if it is not
+  ansible.builtin.assert:
+    that: __acme_certbot.rc == 0
+    fail_msg: >-
+      certbot is not installed on this machine, and certificates are issued
+      here rather than on the nodes. Install it — `brew install certbot` on
+      macOS, `apt install certbot` on Debian or Ubuntu — and run again.
+    success_msg: "Controller has {{ __acme_certbot.stdout | default('certbot') | trim }}."
+    quiet: true
+  run_once: true
 
-- name: Create certbot directories
+- name: Create the local certbot directory
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ acme_local_dir }}"
     state: directory
-    owner: root
-    group: root
-    mode: "0755"
-  loop:
-    - "{{ acme_config_dir }}"
-    - "{{ acme_config_dir }}/renewal-hooks/deploy"
-    - "{{ acme_hook_dir }}"
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
 
 - name: Write the DNS API credentials
   ansible.builtin.template:
     src: dns-api.env.j2
-    dest: "{{ acme_dns_credentials }}"
-    owner: root
-    group: root
+    dest: "{{ acme_local_dir }}/dns-api.env"
     mode: "0600"
-    backup: true
+  delegate_to: localhost
+  become: false
+  run_once: true
 
 - name: Install the dns-01 hook
   ansible.builtin.template:
     src: dns-hook.sh.j2
-    dest: "{{ acme_hook_dir }}/dns-hook.sh"
-    owner: root
-    group: root
+    dest: "{{ acme_local_dir }}/dns-hook.sh"
     mode: "0700"
-    backup: true
+  delegate_to: localhost
+  become: false
+  run_once: true
 
-- name: Install the renewal deploy hook
-  ansible.builtin.template:
-    src: reload-service.sh.j2
-    dest: "{{ acme_config_dir }}/renewal-hooks/deploy/reload-{{ acme_reload_service }}.sh"
-    mode: "0755"
-    backup: true
-
-# What makes this idempotent is comparing the names the lineage already
+# What makes issuing idempotent is comparing the names the lineage already
 # covers, not the presence of a file. A `creates:` guard matches as soon as
 # any certificate exists, so adding an alias to acme_domains would silently do
 # nothing and angie would serve a certificate missing the new name.
-# Reads only, so it neither reports a change nor is skipped in check mode.
 - name: Read the names the current certificate covers
   ansible.builtin.command:
-    argv:
-      - certbot
-      - certificates
-      - --cert-name
-      - "{{ acme_cert_name }}"
+    argv: "{{ __acme_base_argv + ['certificates', '--cert-name', acme_cert_name] }}"
   register: __acme_existing
   changed_when: false
   failed_when: false
   check_mode: false
+  delegate_to: localhost
+  become: false
 
-# The hooks are recorded in the lineage's renewal config, so `certbot renew`
-# replays them unattended — the manual plugin renews itself only because they
-# are there.
 - name: Request or extend the certificate
   ansible.builtin.command:
     argv: "{{ __acme_argv }}"
@@ -78,12 +74,12 @@
           | regex_search('Domains:\s*(.+)', '\1')
           | default([], true) | join(' ')).split() }}
     __acme_argv: >-
-      {%- set argv = [
-            'certbot', 'certonly', '--non-interactive', '--agree-tos',
-            '--expand', '--cert-name', acme_cert_name, '-m', acme_email,
+      {%- set argv = __acme_base_argv + [
+            'certonly', '--non-interactive', '--agree-tos', '--expand',
+            '--cert-name', acme_cert_name, '-m', acme_email,
             '--manual', '--preferred-challenges', 'dns',
-            '--manual-auth-hook', acme_hook_dir ~ '/dns-hook.sh add',
-            '--manual-cleanup-hook', acme_hook_dir ~ '/dns-hook.sh remove',
+            '--manual-auth-hook', acme_local_dir ~ '/dns-hook.sh add',
+            '--manual-cleanup-hook', acme_local_dir ~ '/dns-hook.sh remove',
           ] -%}
       {%- for d in acme_domains -%}
       {%-   set _ = argv.extend(['-d', d]) -%}
@@ -91,4 +87,60 @@
       {{ argv }}
   when: __acme_covered | symmetric_difference(acme_domains) | length > 0
   changed_when: true
+  delegate_to: localhost
+  become: false
+
+# certbot's own default is 30 days. Nothing here renews unattended, so the
+# margin is widened: it has to survive however long passes between two runs
+# of this playbook.
+- name: Widen the renewal margin for this lineage
+  ansible.builtin.lineinfile:
+    path: "{{ acme_local_dir }}/renewal/{{ acme_cert_name }}.conf"
+    regexp: '^renew_before_expiry\s*='
+    line: "renew_before_expiry = {{ acme_renew_days | int }} days"
+    insertafter: '^\[renewalparams\]'
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+
+# Renews every lineage that is close enough to expiry, and does nothing
+# otherwise. This is the task that keeps the deployment alive between
+# deliberate changes — run the playbook, or --tags certs, often enough that it
+# gets the chance.
+- name: Renew whatever is close to expiry
+  ansible.builtin.command:
+    argv: "{{ __acme_base_argv + ['renew', '--non-interactive'] }}"
+  register: __acme_renew
+  changed_when: "'No renewals were attempted' not in __acme_renew.stdout"
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+# ---------------------------------------------------------------------------
+# Onto the node
+# ---------------------------------------------------------------------------
+- name: Create the certificate directory on the node
+  ansible.builtin.file:
+    path: "{{ acme_node_cert_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# copy compares checksums, so a renewed certificate is shipped on the next run
+# and an unchanged one moves nothing. The private key is 0600: angie reads it
+# as root before dropping privileges.
+- name: Install the certificate on the node
+  ansible.builtin.copy:
+    src: "{{ acme_local_dir }}/live/{{ acme_cert_name }}/{{ item.name }}"
+    dest: "{{ acme_node_cert_dir }}/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: fullchain.pem, mode: "0644" }
+    - { name: privkey.pem, mode: "0600" }
+  loop_control:
+    label: "{{ item.name }}"
   notify: Reload the service fronting the certificate

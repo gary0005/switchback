@@ -11,7 +11,7 @@ Angie fronting xray on 443, over both TCP (h2) and QUIC (h3).
 
 `angie_domains` holds the node's primary name plus its aliases, such as the apex. They are all served by a single `server` block, which is also what keeps `reuseport` legal: it may appear only once per address:port across the whole configuration, and a second block on 443 would have to omit it. Omitting it silently is how you end up debugging QUIC.
 
-The apex may point at several nodes at once, and each of them serves it. That works because certificates come over dns-01: a node proves it owns a name by writing a TXT record, not by being the one the name resolves to. See the [acme role](../acme/README.md).
+The apex may point at several nodes at once, and each of them serves it. That works because certificates come over dns-01 — ownership is proven by a TXT record, not by being the node a name resolves to — and they are issued on the controller, so no node holds the key that writes it. See the [acme role](../acme/README.md).
 
 ## One location per path
 
@@ -19,7 +19,7 @@ angie publishes a location for the user-facing path of every chain the node fron
 
 ## Requirements
 
-* The `acme` role must have issued a certificate covering every name in `angie_domains`, under the lineage `angie_cert_name`. angie will not start without it, which is why acme runs first — dns-01 needs nothing from angie, so there is no ordering problem.
+* The `acme` role must have installed a certificate covering every name in `angie_domains` into `angie_cert_dir`. angie will not start without it, which is why acme runs first — issuing happens on the controller and needs nothing from angie, so there is no ordering problem.
 * The `xray` role owns `angie_socket_dir`; angie only reads from it. Run xray first, or every location returns 502 until the next run.
 * `angie_sub_root` must match `subscription_root`, and `angie_site_root` must match `website_root`.
 
@@ -31,6 +31,7 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 |---|---|---|
 | `angie_domains` | `{{ vpn_domains }}` | Every name TLS is terminated for |
 | `angie_cert_name` | `{{ inventory_hostname }}` | Certificate lineage, matching `acme_cert_name` |
+| `angie_cert_dir` | `/etc/ssl/switchback/<name>` | Where acme installs the files; must match `acme_node_cert_dir` |
 | `angie_chains` | `{{ vpn_chains }}` | Chain declaration; decides which locations exist |
 | `angie_chain_data` | `{{ vpn_chain_data }}` | Per-chain paths |
 | `angie_socket_dir` | `{{ vpn_socket_dir }}` | Where xray's unix sockets live |

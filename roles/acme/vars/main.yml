@@ -1,0 +1,15 @@
+---
+# Internal to the role: computed from its inputs, not part of its interface.
+
+# Every certbot invocation is pinned to the role's own directory tree. Without
+# these three it would reach for /etc/letsencrypt and want root on your laptop
+# — and it would put a deployment's certificates wherever the controller
+# happens to keep its own.
+__acme_base_argv:
+  - certbot
+  - --config-dir
+  - "{{ acme_local_dir }}"
+  - --work-dir
+  - "{{ acme_local_dir }}/work"
+  - --logs-dir
+  - "{{ acme_local_dir }}/logs"
