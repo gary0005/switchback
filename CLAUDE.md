@@ -4,7 +4,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 
 ## Hard rules
 
-1. **Never commit a real domain, IP or token.** Committed files use RFC 5737 addresses and `example.com`. Real values live in the gitignored `inventory/host_vars/<host>/main.yml`, beside a committed `main.yml.example`, or in the vault. When adding a node, write both files.
+1. **Never commit a real domain, IP, token or personal detail — an email address included.** Committed files use RFC 5737 addresses and `example.com`. Real values live in the gitignored `inventory/host_vars/<host>/main.yml`, beside a committed `main.yml.example`, or in the vault (`vault_seed`, `vault_acme_email`). When adding a node, write both files. When a role needs a personal value, bridge it in `group_vars/all/main.yml` as `<role>_x: "{{ vault_x }}"` rather than inlining it.
 2. **Never touch a node in the `unmanaged` group.** It carries live user traffic under someone else's configuration. Plays exclude it by targeting `vpn:!unmanaged`, so the exclusion is structural rather than a matter of operator memory. Its peers still read its domains and chain paths from the inventory.
 3. **No traffic ever reaches xray directly from the network.** xray binds unix sockets only; angie on 443 is the single ingress, and node-to-node hops speak the same VLESS+XHTTP/TLS/443 an ordinary client speaks. Any change that opens an xray port is wrong — the censor bans direct xray flows fast.
 4. **Nothing lives in state.** Paths, ports, UUIDs, tokens all derive from `vault_seed` via `hash('sha256')` / `to_uuid`. No fact cache, no `delegate_to`, no play ordering — any play must run under `--limit`.

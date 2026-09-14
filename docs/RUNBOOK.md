@@ -47,17 +47,17 @@ vpn_domains:
 
 The first domain is the node's primary. The rest are aliases and go into the same certificate. Put the apex on exactly one node: certificates come over http-01, which is answered by whichever node the name resolves to, so a name pointing at several nodes renews by luck.
 
-**Chains and users** live in [`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The chain list is already written; what you need to set is the roster and the notification address:
+**Chains and users** live in [`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The chain list is already written; what you need to set is the roster:
 
 ```yaml
 vpn_users:
   - { name: boss, tier: all, rot: 1 }     # single-hop test chains as well
   - { name: alice, tier: main, rot: 1 }   # two-hop chains only
-
-acme_email: "you@example.com"             # Let's Encrypt expiry notices
 ```
 
 `rot` is a rotation counter. Bumping one user's `rot` reissues their UUID and their link; nobody else is affected.
+
+The address Let's Encrypt sends expiry notices to is not here — it goes in the vault, in the next step but one. This file is committed, and a plain-text address in a repository is an address that gets scraped.
 
 **Membership** is in [`inventory/hosts.yml`](../inventory/hosts.yml). A node listed under `unmanaged` is skipped by every play — that is how a node already carrying live traffic stays untouched while its peers still read its domain out of the inventory.
 
@@ -93,7 +93,7 @@ The vault is an encrypted YAML file that Ansible decrypts in memory for the leng
 openssl rand -hex 32                       # this is your vault_seed
 
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
-$EDITOR /tmp/vault.yml                     # the seed, and nothing else
+$EDITOR /tmp/vault.yml                     # the seed and your email address
 uv run ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
 shred -u /tmp/vault.yml                    # rm -P on macOS
 ```
@@ -102,7 +102,7 @@ shred -u /tmp/vault.yml                    # rm -P on macOS
 
 To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
 
-One value is all that goes in. Certificates are issued over http-01, where the node proves it owns a name by answering on its own port 80, so no DNS credential exists anywhere in this deployment — and a node that gets broken into cannot be used to take over the domain.
+Two values go in, and only two. `vault_seed`, which everything derives from, and `vault_acme_email`, which is where Let's Encrypt sends expiry notices — not a secret, but personal data that has no business sitting in a committed file. There is no DNS credential: certificates come over http-01, where a node proves it owns a name by answering on its own port 80, so a node that gets broken into cannot be used to take over the domain.
 
 ## 5. DNS
 

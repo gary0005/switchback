@@ -1,9 +1,14 @@
 ---
 # ansible-vault encrypt --output inventory/group_vars/all/vault.yml vault.yml.example
 #
-# The ONE secret of the whole deployment. Everything else derives from it.
-# Generate with: openssl rand -hex 32
+# The one secret of the whole deployment: every path, UUID and subscription
+# token derives from it. Generate with: openssl rand -hex 32
 vault_seed: "REPLACE_ME_openssl_rand_hex_32"
+
+# Where Let's Encrypt sends expiry notices. Not a secret, but personal data,
+# and everything else in the inventory is committed — see acme_email in
+# group_vars/all/main.yml, which reads this.
+vault_acme_email: "you@example.com"
 
 # Nothing else belongs here. Certificates are issued over http-01, so no DNS
 # credential ever reaches a node — see roles/acme/README.md.

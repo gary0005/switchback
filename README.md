@@ -45,7 +45,7 @@ inventory/
 ├── group_vars/all/
 │   ├── ansible.yml              connection settings
 │   ├── main.yml                 chains, seed-derived data, users, settings
-│   └── vault.yml                encrypted; holds vault_seed and nothing else
+│   └── vault.yml                encrypted; vault_seed and the notification address
 └── host_vars/<host>/
     ├── main.yml.example         committed; placeholder addresses and domains
     └── main.yml                 gitignored; the real ansible_host and vpn_domains
@@ -79,9 +79,10 @@ pip install pre-commit && pre-commit install
 for h in inventory/host_vars/*/; do cp "$h/main.yml.example" "$h/main.yml"; done
 $EDITOR inventory/host_vars/*/main.yml      # ansible_host, vpn_domains
 $EDITOR inventory/hosts.yml                 # membership, and what is unmanaged
-$EDITOR inventory/group_vars/all/main.yml   # vpn_chains, vpn_users, acme_email
+$EDITOR inventory/group_vars/all/main.yml   # vpn_chains, vpn_users
 
-# 2. Create the vault (vault_seed = openssl rand -hex 32)
+# 2. Create the vault: the seed, and the address Let's Encrypt notifies
+#    (vault_seed = openssl rand -hex 32)
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
 $EDITOR /tmp/vault.yml
 ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
@@ -129,7 +130,9 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 **Host key checking is on.** Disabling it would accept any key on first connection, which hands an on-path attacker a root shell on the nodes this repository exists to keep private. Seed `known_hosts` from a channel you trust.
 
-**Never commit an unencrypted vault.** `pre-commit install` wires up `detect-secrets` and `gitleaks`; the same checks run in CI. The vault holds one value, `vault_seed` — certificates need no credential, so there is nothing else in it.
+**Never commit an unencrypted vault.** A pre-commit hook refuses any `vault.yml` that does not start with `$ANSIBLE_VAULT`, and `detect-secrets` and `gitleaks` run beside it; the same checks run in CI.
+
+**The vault holds two values.** `vault_seed`, which everything derives from, and `vault_acme_email`. The address is not a secret, but it is personal data, and a plain-text address in a repository is an address that gets scraped. Certificates need no credential at all — see the [acme role](roles/acme/README.md).
 
 **Domains are not secrets, but they are not public either.** Everything committed here uses `example.com` and RFC 5737 addresses: real addresses and domains live in `host_vars/<host>/main.yml`, which is gitignored, next to the committed `main.yml.example`. Back those files up somewhere — they are not in the repository, and losing them means reconstructing the inventory by hand.
 

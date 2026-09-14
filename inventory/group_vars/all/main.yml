@@ -124,8 +124,11 @@ vpn_tier_kinds:
 # is the authoritative description of the role's interface, this one states
 # what *this* deployment wants.
 
-# Let's Encrypt sends expiry notices here. There is no sane default; set it.
-acme_email: "admin@example.com"
+# Let's Encrypt sends expiry notices here. The address itself lives in the
+# vault rather than in this file: it is personal data, this file is committed,
+# and an address in a public-facing repository is an address that gets
+# scraped. The role needs it under its own name, so this is the bridge.
+acme_email: "{{ vault_acme_email }}"
 
 firewall_ssh_allowed_cidrs: []     # e.g. ["203.0.113.0/24"]; empty = 22 open
 
