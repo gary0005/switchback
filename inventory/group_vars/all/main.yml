@@ -105,10 +105,28 @@ vpn_probe_uuid: "{{ (vault_seed ~ ':probe') | to_uuid }}"
 # accepts management traffic on.
 vpn_egress_ip: "{{ ansible_host }}"
 
-# Primary name of this node: the one it is addressed by in chains and in
-# subscription links. The rest of `vpn_domains` are aliases served by the same
-# angie and covered by the same certificate.
+# Primary name of this node: the one it is addressed by in chains. The rest of
+# `vpn_domains` are aliases served by the same angie and covered by the same
+# certificate.
 vpn_domain: "{{ vpn_domains[0] }}"
+
+# The name more than one node answers to — the shared apex. Worked out from
+# the inventory rather than written down, so the real domain stays out of a
+# committed file. Subscriptions are served under it: a link then keeps working
+# whichever node the round robin lands on, instead of dying with the one node
+# whose name was baked into it.
+#
+# Falls back to this node's primary when no name is shared, which is what a
+# single-node deployment looks like.
+vpn_apex: >-
+  {%- set seen = {} -%}
+  {%- for h in groups['vpn'] | default([]) -%}
+  {%-   for d in hostvars[h]['vpn_domains'] | default([]) -%}
+  {%-     set _ = seen.update({d: seen.get(d, 0) + 1}) -%}
+  {%-   endfor -%}
+  {%- endfor -%}
+  {%- set shared = seen | dictsort(by='value', reverse=true) | first -%}
+  {{ shared[0] if shared and shared[1] > 1 else vpn_domain }}
 
 # Unix socket directory shared between the xray and angie roles. Pinned by
 # RuntimeDirectory= in the xray systemd unit.

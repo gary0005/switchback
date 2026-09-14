@@ -23,6 +23,12 @@ Which chains a user gets follows from `subscription_tier_kinds`. That policy is 
 
 `name` identifies a user to the deployment and nothing more: it derives their UUID and token, and tags them in xray's config. It is not a person's name, and should not be — the label lands in clear text on every node. Who is behind `u-a` is yours to remember.
 
+## Links live under the shared apex
+
+Every node renders the identical set of files, so the subscription URL names the apex rather than one node. A link naming a single node dies with that node; a link under the apex is answered by whichever one the round robin reaches.
+
+The trade-off is worth knowing: if one of the nodes behind the apex is unreachable from a particular network, refreshing the subscription fails some of the time from there — the client retries and gets a different address. The configs inside the file are unaffected, since each names its own entry node directly.
+
 ## The filename is the credential
 
 The token in the path *is* the user's access. That is why `subscription_show_links` defaults to `false` — printing a link writes a credential into the run log and into any CI system that captures it.
@@ -54,7 +60,7 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `subscription_page_lang` | `en` | Selects `templates/index.<lang>.html.j2` |
 | `subscription_show_links` | `false` | Whether to print the links during the run |
 | `subscription_root` | `/var/www/sub` | Where payloads are written |
-| `subscription_domain` | `{{ vpn_domain }}` | Domain the subscription URL itself points at |
+| `subscription_domain` | `{{ vpn_apex }}` | Domain the subscription URL points at — the shared apex |
 | `subscription_prefix` | `{{ vpn_sub_prefix }}` | Secret path prefix angie serves under |
 | `subscription_update_interval` | `12` | Refresh hint for clients, in hours |
 

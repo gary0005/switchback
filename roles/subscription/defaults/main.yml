@@ -32,7 +32,10 @@ subscription_alpns:
 # Aliases of the shared `vpn_*` inventory variables. Values read for *other*
 # hosts through hostvars keep the `vpn_*` name in the templates, because role
 # defaults are not in scope for a peer belonging to a different play.
-subscription_domain: "{{ vpn_domain }}"
+# The shared apex, not this node's own name: every node renders the identical
+# set of files, so a link under the apex survives any one of them being
+# unreachable — which a link naming a single node does not.
+subscription_domain: "{{ vpn_apex }}"
 subscription_prefix: "{{ vpn_sub_prefix }}"
 
 # --- Users and tier policy -------------------------------------------------

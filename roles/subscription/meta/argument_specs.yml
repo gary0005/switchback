@@ -58,8 +58,10 @@ argument_specs:
           - h3
       subscription_domain:
         description:
-          - Domain the subscription links themselves point at. Defaults to
-            this node's primary name.
+          - Domain the subscription URL itself points at. Defaults to the
+            shared apex rather than the node's own name - every node renders
+            the identical set of files, so a link under the apex survives any
+            one node being unreachable.
         type: str
       subscription_prefix:
         description: Secret path prefix angie serves the payloads under.
