@@ -1,0 +1,18 @@
+{#- Which nodes answer for which name. Read by the http-01 hook, which has to
+    put the challenge file on every node a name resolves to — the apex is
+    shared, and Let's Encrypt connects to only one of the addresses.
+
+    Built from the inventory rather than from `ansible_play_hosts`: under
+    --limit the play is a single node, but a name carried by three still has
+    to be answered on all three, or the validation fails on whichever one the
+    validator happens to reach. -#}
+{%- set managed = groups[acme_target_group] | default([])
+                  | difference(groups[acme_target_exclude_group] | default([])) -%}
+{%- set out = {} -%}
+{%- for h in managed -%}
+{%-   for d in hostvars[h]['vpn_domains'] -%}
+{%-     set _ = out.setdefault(d, []).append(
+          (hostvars[h]['ansible_user'] | default('root')) ~ '@' ~ hostvars[h]['ansible_host']) -%}
+{%-   endfor -%}
+{%- endfor -%}
+{{ out | to_nice_json }}

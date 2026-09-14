@@ -33,7 +33,7 @@ Adding a node is one entry in `hosts.yml`, one `host_vars` file, and the chains 
 
 **Tiers are enforced server side.** A user whose tier excludes single-hop chains does not merely lack those links; their UUID is absent from those inbounds.
 
-**Certificates come over dns-01, issued on the controller.** Ownership is proven by writing a TXT record rather than by being the node a name resolves to, so the apex can point at several nodes at once. The key that writes it is account-wide at the registrar and cannot be scoped down, so it never goes near a node: certbot runs on your machine and only the resulting files are shipped. A compromised node leaks its own certificate and nothing else — and `--tags verify` fails if that key ever turns up on one.
+**Certificates come over http-01, issued on the controller, with the challenge distributed.** Let's Encrypt reaches one of the addresses a name resolves to, so for a name on three nodes the challenge file is written to all three over ssh. That is what lets the apex span nodes **without any DNS API credential existing** — not on a node, not on your machine. `--tags verify` fails if one ever appears.
 
 **Unmanaged nodes are excluded structurally.** A node in the `unmanaged` group is skipped by every play — it carries live traffic under someone else's configuration. Its peers still read its domain and paths out of the inventory, and chains touching it stay out of subscriptions until it is taken over, because nothing is listening at the far end yet.
 
@@ -45,7 +45,7 @@ inventory/
 ├── group_vars/all/
 │   ├── ansible.yml              connection settings
 │   ├── main.yml                 chains, seed-derived data, users, settings
-│   └── vault.yml                encrypted; seed, notification address, DNS API credentials
+│   └── vault.yml                encrypted; the seed and the notification address
 └── host_vars/<host>/
     ├── main.yml.example         committed; placeholder addresses and domains
     └── main.yml                 gitignored; the real ansible_host and vpn_domains
@@ -81,8 +81,8 @@ $EDITOR inventory/host_vars/*/main.yml      # ansible_host, vpn_domains
 $EDITOR inventory/hosts.yml                 # membership, and what is unmanaged
 $EDITOR inventory/group_vars/all/main.yml   # vpn_chains, vpn_users
 
-# 2. Create the vault: the seed, the notification address, and the DNS API
-#    credentials certificates are issued with (vault_seed = openssl rand -hex 32)
+# 2. Create the vault: the seed and the notification address
+#    (vault_seed = openssl rand -hex 32)
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
 $EDITOR /tmp/vault.yml
 ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
@@ -133,9 +133,9 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 **Never commit an unencrypted vault.** A pre-commit hook refuses any `vault.yml` that does not start with `$ANSIBLE_VAULT`, and `detect-secrets` and `gitleaks` run beside it; the same checks run in CI.
 
-**The DNS credential never reaches a node.** It can write to every domain in the registrar account — that scope cannot be narrowed — so certbot runs on the controller and nodes receive only `fullchain.pem` and `privkey.pem`. `--tags verify` asserts no node is holding it.
+**There is no DNS credential at all.** dns-01 would need a key that can write to the zone, and at this registrar that key cannot be scoped to one domain or one record type. Distributing the http-01 challenge over ssh removes the need for one entirely; `--tags verify` asserts none has crept back.
 
-**The vault holds four values:** `vault_seed`, which everything derives from; `vault_acme_email`, personal data rather than a secret; and the zone name with its API key and secret. They are used on your machine, not on the servers.
+**The vault holds two values:** `vault_seed`, which everything derives from, and `vault_acme_email` — personal data rather than a secret.
 
 **Domains are not secrets, but they are not public either.** Everything committed here uses `example.com` and RFC 5737 addresses: real addresses and domains live in `host_vars/<host>/main.yml`, which is gitignored, next to the committed `main.yml.example`. Back those files up somewhere — they are not in the repository, and losing them means reconstructing the inventory by hand.
 
@@ -157,7 +157,7 @@ Everything in this repository is English except the user-facing subscription pag
 
 **Clock accuracy.** VLESS depends on it; a couple of minutes of drift breaks the handshake. `chrony` is installed by the `common` role for that reason, not for tidiness.
 
-**A challenge record that never propagates.** The acme hook polls until its TXT is visible and fails if it is not, rather than letting Let's Encrypt look too early and spending a rate-limit slot. If a zone is slow, raise `acme_dns_check_tries`.
+**A redirect that swallows `/.well-known/acme-challenge/`.** Port 80 is what issuing and renewal run on. Closing it, or letting the redirect take that prefix, breaks certificates two months after the fact.
 
 **Forgetting to run the playbook.** Nothing renews unattended: certificates are issued on your machine, so an expiry nobody acts on is an outage. `acme_renew_days` is 45, and Let's Encrypt emails `acme_email` — but a monthly `--tags certs` is what actually keeps it alive.
 
@@ -187,7 +187,7 @@ There is no Molecule coverage yet. See "Known gaps".
 * No monitoring beyond `--tags verify` on demand, and nothing watches certificate expiry except Let's Encrypt's own email. Angie can expose `/status` as JSON — worth wiring up a node_exporter and an expiry alert.
 * Certificate renewal depends on someone running the playbook; see the [acme role](roles/acme/README.md).
 * DNS is not code. `--tags verify` catches a record that disagrees with the inventory, but nothing creates the records for you.
-* Concurrent issuing across nodes sharing the apex is expected to work but has not been exercised on a slow zone; if it turns flaky, issue with `--limit`.
+* Issuing depends on ssh reaching every node that carries the name being validated.
 * The live check leans on an external echo service (`verify_echo_url`) to learn the egress address.
 
 ## License

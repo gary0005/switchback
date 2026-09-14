@@ -4,7 +4,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 
 ## Hard rules
 
-1. **Never commit a real domain, IP, token or personal detail — an email address included.** Committed files use RFC 5737 addresses and `example.com`. Real values live in the gitignored `inventory/host_vars/<host>/main.yml`, beside a committed `main.yml.example`, or in the vault (`vault_seed`, `vault_acme_email`, `vault_dns_zone`, `vault_spaceship_api_*`). When adding a node, write both files. When a role needs a personal value, bridge it in `group_vars/all/main.yml` as `<role>_x: "{{ vault_x }}"` rather than inlining it.
+1. **Never commit a real domain, IP, token or personal detail — an email address included.** Committed files use RFC 5737 addresses and `example.com`. Real values live in the gitignored `inventory/host_vars/<host>/main.yml`, beside a committed `main.yml.example`, or in the vault (`vault_seed`, `vault_acme_email` — those two and nothing else). When adding a node, write both files. When a role needs a personal value, bridge it in `group_vars/all/main.yml` as `<role>_x: "{{ vault_x }}"` rather than inlining it.
 2. **User names in `vpn_users` are labels, never people.** They are written in clear text into xray's config on every node, so the vault would hide them from this repository and from nowhere else. They also feed the UUID and token derivation, so renaming one reissues that user's access.
 3. **Never touch a node in the `unmanaged` group.** It carries live user traffic under someone else's configuration. Plays exclude it by targeting `vpn:!unmanaged`, so the exclusion is structural rather than a matter of operator memory. Its peers still read its domains and chain paths from the inventory.
 4. **No traffic ever reaches xray directly from the network.** xray binds unix sockets only; angie on 443 is the single ingress, and node-to-node hops speak the same VLESS+XHTTP/TLS/443 an ordinary client speaks. Any change that opens an xray port is wrong — the censor bans direct xray flows fast.
@@ -30,11 +30,11 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 - A document root that serves nothing at `/` fails the first active probe.
 - certbot: use `--cert-name` when a cert covers several names, otherwise adding a SAN silently does nothing (the `creates:` guard still matches).
 - A Jinja comment or tag directly after `{{ ansible_managed | comment }}` eats the newline it ends on and comments out the first real line. Keep computation and explanation above it.
-- dns-01 is answered by `roles/acme/templates/dns-hook.sh.j2`, a hook in this repo rather than a third-party plugin, running on the controller beside certbot. `PUT /v1/dns/records/{zone}` is **additive** on this API; do not "read, modify, write" or you will replace the zone. Names are relative to it: apex is `_acme-challenge`, a subdomain is `_acme-challenge.<sub>`.
-- The hook polls until its TXT is visible and exits non-zero if it never is. Never replace that with a fixed sleep: a challenge checked too early is a failed issue and a spent rate-limit slot.
-- acme runs before angie, which will not start without a certificate. dns-01 needs nothing from angie, so keep it that way — no placeholder, no symlink, no second pass.
-- **The DNS credential never goes on a node.** It is account-wide at the registrar and cannot be scoped down, so certbot runs on the controller (`delegate_to: localhost`, `become: false`, under `acme_local_dir`) and nodes get only the two PEM files. `verify` fails if such a key appears on a node — do not "simplify" by moving issuing back onto them.
-- The price of that is renewal only happening when the playbook runs. `acme_renew_days` is 45 for slack; do not lower it without adding something that watches expiry.
+- **There is no DNS API credential in this deployment, and it must stay that way.** dns-01 would need a zone-wide key (the registrar's scope cannot be narrowed); http-01 with a distributed challenge does not. `verify` fails if such a key appears on a node. Do not "simplify" to dns-01.
+- http-01 is answered by `roles/acme/templates/http-hook.sh.j2`, running on the controller. It writes the challenge to **every** node carrying the name, from `targets.json` built out of the *inventory* (not `ansible_play_hosts` — `--limit` must not shrink that set). Let's Encrypt reaches one address and falls back only on dial errors, so a node answering without the file kills the validation.
+- In that hook's `remove` branch, `ssh -n` is load-bearing: without it ssh eats the loop's stdin and only the first node is cleaned up.
+- acme runs in two parts: angie will not start without a certificate, and http-01 is answered by angie. `main.yml` writes a self-signed placeholder before angie; `issue.yml` runs after, behind `meta: flush_handlers`.
+- Renewal happens only when the playbook runs. `acme_renew_days` is 45 for slack; do not lower it without adding something that watches expiry.
 
 ## Tooling
 

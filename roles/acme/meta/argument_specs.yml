@@ -1,22 +1,28 @@
 ---
 argument_specs:
   main:
-    short_description: Issue a TLS certificate over dns-01, on the controller.
+    short_description: Issue a TLS certificate over http-01, on the controller.
     description:
       - Issues one certificate per node covering every name that node answers
         to, and installs the resulting files on it. certbot runs on the
-        controller; the node never sees the DNS credential.
+        controller; the challenge is distributed to the nodes over ssh.
       - >-
-        dns-01 rather than http-01 because a name may then resolve to several
-        nodes at once - the shared apex does - and because the certificate is
-        obtained before the domain takes any traffic. Issuing centrally rather
-        than per node because the registrar's key is account-wide: a node
-        holding it would expose every domain in the account. What it costs is
-        unattended renewal - nothing on a node notices an expiring
-        certificate, so the playbook has to be run. See the role README.
-      - The hook is a script in this repository rather than a third-party
-        certbot plugin. It handles a credential that can rewrite the zone, so
-        being able to read all of it matters more than the convenience.
+        Distributing the challenge is what lets a name live on several nodes
+        without any DNS credential existing. Let's Encrypt connects to one of
+        the addresses a name resolves to and falls back to another only when
+        the connection itself fails, so a node answering without the file ends
+        the validation - putting the file on every node that carries the name
+        removes the guess. It is what Let's Encrypt's own documentation
+        recommends for names served by more than one machine.
+      - >-
+        What it costs - port 80 must stay open, issuing depends on ssh
+        reaching every node carrying the name, and renewal is not unattended:
+        nothing on a node notices an expiring certificate, so the playbook has
+        to be run. See the role README.
+      - Runs in two parts. main.yml prepares the webroot, a self-signed
+        placeholder and the hook, because angie will not start without a
+        certificate and http-01 is answered by angie. issue.yml runs after
+        angie is up.
       - Idempotency comes from comparing the names the lineage already covers
         against acme_domains, so adding an alias reissues the certificate
         instead of silently leaving the old one in place.
@@ -42,25 +48,34 @@ argument_specs:
             hostname rather than by the first domain, so renaming a domain
             updates the existing lineage instead of stranding it.
         type: str
-      acme_dns_zone:
+      acme_webroot:
         description:
-          - The DNS zone challenge records are written into. Names are
-            addressed relative to it, so it must be the registered domain
-            rather than any subdomain.
+          - Directory challenge files are written to on the nodes and served
+            from on port 80. Must match angie_acme_webroot.
         type: str
-        required: true
-      acme_dns_api_key:
-        description: API key for the zone's provider.
+        default: /var/www/acme
+      acme_target_group:
+        description:
+          - Inventory group the hook's target map is built from. Built from
+            the inventory rather than the play, so --limit does not shrink the
+            set of nodes a shared name is answered on.
         type: str
-        required: true
-      acme_dns_api_secret:
-        description: API secret for the zone's provider.
+        default: vpn
+      acme_target_exclude_group:
+        description: Group excluded from that map.
         type: str
-        required: true
-      acme_dns_api_base:
-        description: Base URL of the DNS provider's API.
+        default: unmanaged
+      acme_ssh_options:
+        description:
+          - Options the hook passes to ssh. BatchMode so a missing key fails
+            instead of hanging on a prompt inside certbot.
         type: str
-        default: https://spaceship.dev/api/v1
+      acme_bootstrap_days:
+        description:
+          - Validity of the self-signed placeholder that lets angie start
+            before the first certificate exists.
+        type: int
+        default: 3650
       acme_local_dir:
         description:
           - Directory on the controller holding certbot's configuration, the
@@ -79,26 +94,6 @@ argument_specs:
             run - it has to survive the gap between two runs.
         type: int
         default: 45
-      acme_dns_ttl:
-        description:
-          - TTL of the challenge record. Short on purpose - it lives about a
-            minute, and a long TTL only keeps a stale negative answer cached.
-        type: int
-        default: 60
-      acme_dns_check_resolver:
-        description:
-          - Resolver the hook polls to confirm the record is visible before
-            letting certbot ask Let's Encrypt to look.
-        type: str
-        default: 1.1.1.1
-      acme_dns_check_tries:
-        description: How many times the hook polls before giving up.
-        type: int
-        default: 30
-      acme_dns_check_interval:
-        description: Seconds between polls.
-        type: int
-        default: 5
       acme_reload_service:
         description:
           - Service reloaded on the node when a new or renewed certificate is

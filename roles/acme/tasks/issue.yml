@@ -1,0 +1,86 @@
+---
+# Obtains or renews the certificate on the controller, then installs it on the
+# node. Runs after angie is up: http-01 is answered by angie on port 80, out
+# of the webroot the hook writes into.
+
+# What makes issuing idempotent is comparing the names the lineage already
+# covers, not the presence of a file. A `creates:` guard matches as soon as
+# any certificate exists, so adding an alias to acme_domains would silently do
+# nothing and angie would serve a certificate missing the new name.
+- name: Read the names the current certificate covers
+  ansible.builtin.command:
+    argv: "{{ __acme_base_argv + ['certificates', '--cert-name', acme_cert_name] }}"
+  register: __acme_existing
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  delegate_to: localhost
+  become: false
+
+- name: Request or extend the certificate
+  ansible.builtin.command:
+    argv: "{{ __acme_argv }}"
+  vars:
+    __acme_covered: >-
+      {{ (__acme_existing.stdout | default('')
+          | regex_search('Domains:\s*(.+)', '\1')
+          | default([], true) | join(' ')).split() }}
+    __acme_argv: >-
+      {%- set argv = __acme_base_argv + [
+            'certonly', '--non-interactive', '--agree-tos', '--expand',
+            '--cert-name', acme_cert_name, '-m', acme_email,
+            '--manual', '--preferred-challenges', 'http',
+            '--manual-auth-hook', acme_local_dir ~ '/http-hook.sh add',
+            '--manual-cleanup-hook', acme_local_dir ~ '/http-hook.sh remove',
+          ] -%}
+      {%- for d in acme_domains -%}
+      {%-   set _ = argv.extend(['-d', d]) -%}
+      {%- endfor -%}
+      {{ argv }}
+  when: __acme_covered | symmetric_difference(acme_domains) | length > 0
+  changed_when: true
+  delegate_to: localhost
+  become: false
+
+# certbot's own default is 30 days. Nothing here renews unattended, so the
+# margin is widened: it has to survive however long passes between two runs
+# of this playbook.
+- name: Widen the renewal margin for this lineage
+  ansible.builtin.lineinfile:
+    path: "{{ acme_local_dir }}/renewal/{{ acme_cert_name }}.conf"
+    regexp: '^renew_before_expiry\s*='
+    line: "renew_before_expiry = {{ acme_renew_days | int }} days"
+    insertafter: '^\[renewalparams\]'
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+
+# Renews every lineage close enough to expiry and does nothing otherwise. This
+# is the task that keeps the deployment alive between deliberate changes — run
+# the playbook, or --tags certs, often enough that it gets the chance.
+- name: Renew whatever is close to expiry
+  ansible.builtin.command:
+    argv: "{{ __acme_base_argv + ['renew', '--non-interactive'] }}"
+  register: __acme_renew
+  changed_when: "'No renewals were attempted' not in __acme_renew.stdout"
+  check_mode: false
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+# copy compares checksums, so a renewed certificate is shipped on the next run
+# and an unchanged one moves nothing. This is also what replaces the
+# placeholder written by main.yml.
+- name: Install the certificate on the node
+  ansible.builtin.copy:
+    src: "{{ acme_local_dir }}/live/{{ acme_cert_name }}/{{ item.name }}"
+    dest: "{{ acme_node_cert_dir }}/{{ item.name }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { name: fullchain.pem, mode: "0644" }
+    - { name: privkey.pem, mode: "0600" }
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload the service fronting the certificate

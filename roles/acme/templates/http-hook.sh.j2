@@ -1,0 +1,69 @@
+#!/bin/bash
+{{ ansible_managed | comment }}
+# certbot's http-01 hook, called twice per name:
+#
+#   {{ acme_local_dir }}/http-hook.sh add
+#   {{ acme_local_dir }}/http-hook.sh remove
+#
+# Runs on the controller. For the name being validated it writes the challenge
+# file to *every* node that answers for that name, over ssh, and removes it
+# again afterwards.
+#
+# Distributing rather than placing it once is the whole point. Let's Encrypt
+# connects to one of the addresses a name resolves to and falls back to
+# another only when the connection itself fails — a node that answers without
+# the file returns 404, which ends the validation then and there. With a name
+# on three nodes, putting the file on one of them is a coin toss.
+set -euo pipefail
+
+action="${1:?usage: $0 add|remove}"
+
+# CERTBOT_IDENTIFIER is the current name; CERTBOT_DOMAIN is what older certbot
+# called it. Accept either, so a version bump does not silently break renewal.
+identifier="${CERTBOT_IDENTIFIER:-${CERTBOT_DOMAIN:-}}"
+: "${identifier:?certbot did not pass an identifier}"
+: "${CERTBOT_TOKEN:?certbot did not pass a token}"
+
+targets=$(IDENTIFIER="$identifier" python3 -c '
+import json, os, sys
+targets = json.load(open("{{ acme_local_dir }}/targets.json"))
+name = os.environ["IDENTIFIER"]
+hosts = targets.get(name)
+if not hosts:
+    sys.exit("no node in the inventory answers for " + name)
+print("\n".join(hosts))
+')
+
+challenge_dir="{{ acme_webroot }}/.well-known/acme-challenge"
+challenge_file="$challenge_dir/$CERTBOT_TOKEN"
+
+case "$action" in
+add)
+    : "${CERTBOT_VALIDATION:?certbot did not pass a validation value}"
+    # Every node, or none: a node that answers without the file fails the
+    # whole validation, so a partial rollout is worse than not trying.
+    # `set -e` plus this loop means the first failure aborts before certbot
+    # tells Let's Encrypt to look.
+    while read -r target; do
+        [ -n "$target" ] || continue
+        printf '%s' "$CERTBOT_VALIDATION" | ssh {{ acme_ssh_options }} "$target" \
+            "install -d -m 0755 '$challenge_dir' && install -m 0644 /dev/stdin '$challenge_file'"
+    done <<< "$targets"
+    ;;
+remove)
+    # Best effort: a leftover challenge file is litter, not a failure, and
+    # failing here would turn a successful issue into an error.
+    # -n matters: without it ssh inherits this loop's stdin and swallows the
+    # remaining targets, so only the first node is ever cleaned up. The `add`
+    # branch is safe because its stdin is already taken by the pipe.
+    while read -r target; do
+        [ -n "$target" ] || continue
+        ssh -n {{ acme_ssh_options }} "$target" "rm -f '$challenge_file'" \
+            || echo "could not remove $challenge_file from $target" >&2
+    done <<< "$targets"
+    ;;
+*)
+    echo "usage: $0 add|remove" >&2
+    exit 2
+    ;;
+esac

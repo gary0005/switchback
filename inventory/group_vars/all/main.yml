@@ -141,13 +141,6 @@ vpn_tier_kinds:
 # scraped. The role needs it under its own name, so this is the bridge.
 acme_email: "{{ vault_acme_email }}"
 
-# The zone every certificate is issued under, and the credentials each node
-# uses to write its dns-01 challenge into it. Same bridge, same reason: the
-# zone is a real domain and the rest are secrets.
-acme_dns_zone: "{{ vault_dns_zone }}"
-acme_dns_api_key: "{{ vault_spaceship_api_key }}"
-acme_dns_api_secret: "{{ vault_spaceship_api_secret }}"
-
 firewall_ssh_allowed_cidrs: []     # e.g. ["203.0.113.0/24"]; empty = 22 open
 
 # Language of the user-facing subscription page

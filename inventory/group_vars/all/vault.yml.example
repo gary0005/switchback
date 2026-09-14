@@ -10,12 +10,6 @@ vault_seed: "REPLACE_ME_openssl_rand_hex_32"
 # group_vars/all/main.yml, which reads this.
 vault_acme_email: "you@example.com"
 
-# The DNS zone certificates are issued under, and credentials for its API.
-# Certificates come over dns-01, so every node needs to be able to write a
-# TXT record into the zone — which is why these exist and why they are the
-# most dangerous thing in this deployment: a node that is broken into can
-# issue a certificate for any name in the zone. Scope the key to DNS writes
-# and nothing else, and rotate it if a node is ever lost.
-vault_dns_zone: "example.com"
-vault_spaceship_api_key: "REPLACE_ME"
-vault_spaceship_api_secret: "REPLACE_ME"
+# Nothing else belongs here. Certificates are issued over http-01, with the
+# challenge distributed to the nodes over ssh, so no DNS credential exists
+# anywhere in this deployment — see roles/acme/README.md.

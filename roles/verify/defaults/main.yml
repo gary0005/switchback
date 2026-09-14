@@ -38,9 +38,10 @@ verify_probe_startup: 10
 verify_probe_timeout: 25
 
 # --- Credentials that must not be here -------------------------------------
-# Certificates are issued on the controller because the registrar's API key is
-# account-wide: a node holding it would expose every domain in the account, not
-# just this one. This check is what keeps that from quietly regressing.
+# There is no DNS API credential in this deployment at all — the http-01
+# challenge is distributed over ssh instead. This check is what keeps that
+# true: a future change that reaches for dns-01 "because it is simpler" would
+# put a zone-wide key on every node, and it would do it quietly.
 verify_no_credential_paths:
   - /etc/letsencrypt
   - /etc/ssl/switchback

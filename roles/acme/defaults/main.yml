@@ -1,13 +1,17 @@
 ---
-# Certificates are issued on the controller, not on the nodes, and only the
-# resulting files are shipped out. dns-01 needs a credential that can write to
-# the zone, and that credential is account-wide at this registrar — so a node
-# holding it would hand an intruder every domain in the account. Keeping it on
-# one machine you control means a compromised node leaks its own certificate
-# and nothing else.
+# Certificates are issued on the controller over http-01, and the challenge
+# file is copied to every node that answers for the name being validated.
 #
-# What it costs: renewal is not unattended. Nothing on a node will notice an
-# expiring certificate, so the playbook has to be run — see the README.
+# That last part is what makes a shared apex work without a DNS credential.
+# Let's Encrypt connects to one address out of the several a name resolves to
+# and only moves to another if the connection itself fails — a node that
+# answers without the file returns 404 and ends the validation. Putting the
+# file on all of them removes the guess, which is exactly what Let's Encrypt's
+# own documentation says to do when several servers share a name.
+#
+# No API key exists anywhere in this deployment as a result. What it costs:
+# port 80 must stay open, and issuing depends on SSH reaching every node that
+# carries the name.
 
 # Every name the certificate covers — this node's primary plus its aliases.
 acme_domains: "{{ vpn_domains }}"
@@ -23,36 +27,31 @@ acme_cert_name: "{{ inventory_hostname }}"
 # acme_email: ""
 
 # --- On the controller -----------------------------------------------------
-# Everything certbot owns lives here: its config, the lineages, the hook and
-# the credential. Deliberately outside the repository, so no `git add -A` can
-# ever sweep a private key or an API key into a commit.
+# certbot's configuration, the lineages and the hook. Deliberately outside the
+# repository, so no `git add -A` can ever sweep a private key into a commit.
 acme_local_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.local/share/switchback/acme"
 
+# Hosts the hook may distribute challenge files to. Built from the inventory,
+# not from the play: with --limit the play is one node, but a name shared by
+# three still has to be answered on all three.
+acme_target_group: vpn
+acme_target_exclude_group: unmanaged
+
+# ssh options the hook uses. BatchMode so a missing key fails instead of
+# hanging on a prompt inside certbot.
+acme_ssh_options: "-o BatchMode=yes -o ConnectTimeout=10"
+
 # --- On the node -----------------------------------------------------------
-# Where the two files are installed. Not /etc/letsencrypt: certbot is not
-# installed here and nothing on the node renews anything, so borrowing its
-# layout would only suggest otherwise.
+# Where the certificate is installed, and where challenge files are dropped.
 acme_node_cert_dir: "/etc/ssl/switchback/{{ acme_cert_name }}"
+acme_webroot: /var/www/acme
 
-# --- The zone and its API --------------------------------------------------
-# Set these in the inventory from the vault; they have no safe defaults.
-# acme_dns_zone: ""
-# acme_dns_api_key: ""
-# acme_dns_api_secret: ""
+# Validity of the self-signed placeholder. angie will not start without a
+# certificate and http-01 is answered by angie, so something has to be there
+# first; it is replaced in the same run.
+acme_bootstrap_days: 3650
 
-acme_dns_api_base: https://spaceship.dev/api/v1
-
-# TTL of the challenge record. Short: it exists for about a minute, and a long
-# TTL only means a stale negative answer lingers in a resolver's cache.
-acme_dns_ttl: 60
-
-# How the hook waits for the record to be visible before letting certbot ask
-# Let's Encrypt to look. Polling a public resolver rather than sleeping blind:
-# it is both faster when propagation is quick and safer when it is not.
-acme_dns_check_resolver: 1.1.1.1
-acme_dns_check_tries: 30
-acme_dns_check_interval: 5
-
+# --- Renewal ---------------------------------------------------------------
 # Renew anything expiring within this many days. Let's Encrypt certificates
 # last 90; certbot's own default is 30, and the margin matters more here
 # because nothing renews unless somebody runs the playbook.

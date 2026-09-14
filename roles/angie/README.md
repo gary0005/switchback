@@ -11,7 +11,11 @@ Angie fronting xray on 443, over both TCP (h2) and QUIC (h3).
 
 `angie_domains` holds the node's primary name plus its aliases, such as the apex. They are all served by a single `server` block, which is also what keeps `reuseport` legal: it may appear only once per address:port across the whole configuration, and a second block on 443 would have to omit it. Omitting it silently is how you end up debugging QUIC.
 
-The apex may point at several nodes at once, and each of them serves it. That works because certificates come over dns-01 — ownership is proven by a TXT record, not by being the node a name resolves to — and they are issued on the controller, so no node holds the key that writes it. See the [acme role](../acme/README.md).
+The apex may point at several nodes at once, and each of them serves it. Certificates still work because the http-01 challenge is written to *every* node carrying the name — see the [acme role](../acme/README.md).
+
+## Port 80 is not only a redirect
+
+`/.well-known/acme-challenge/` is served from `angie_acme_webroot` before the redirect to HTTPS. That prefix is how every certificate here is issued and renewed; a redirect swallowing it breaks renewal sixty days later, quietly.
 
 ## One location per path
 
@@ -19,7 +23,7 @@ angie publishes a location for the user-facing path of every chain the node fron
 
 ## Requirements
 
-* The `acme` role must have installed a certificate covering every name in `angie_domains` into `angie_cert_dir`. angie will not start without it, which is why acme runs first — issuing happens on the controller and needs nothing from angie, so there is no ordering problem.
+* The `acme` role must have put a certificate in `angie_cert_dir` — on a first run that is a self-signed placeholder, replaced later in the same run. angie will not start without one, and http-01 is answered by angie, so the two are bootstrapped in that order.
 * The `xray` role owns `angie_socket_dir`; angie only reads from it. Run xray first, or every location returns 502 until the next run.
 * `angie_sub_root` must match `subscription_root`, and `angie_site_root` must match `website_root`.
 
@@ -32,6 +36,7 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `angie_domains` | `{{ vpn_domains }}` | Every name TLS is terminated for |
 | `angie_cert_name` | `{{ inventory_hostname }}` | Certificate lineage, matching `acme_cert_name` |
 | `angie_cert_dir` | `/etc/ssl/switchback/<name>` | Where acme installs the files; must match `acme_node_cert_dir` |
+| `angie_acme_webroot` | `/var/www/acme` | http-01 challenge root on port 80; must match `acme_webroot` |
 | `angie_chains` | `{{ vpn_chains }}` | Chain declaration; decides which locations exist |
 | `angie_chain_data` | `{{ vpn_chain_data }}` | Per-chain paths |
 | `angie_socket_dir` | `{{ vpn_socket_dir }}` | Where xray's unix sockets live |
@@ -64,6 +69,8 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 **`http3 on` and the `Alt-Svc` header.** Clients only try h3 once they have been told it exists.
 
 **A non-empty document root.** The site under `angie_site_root` is not decoration — a domain serving nothing at `/` fails the first active probe.
+
+**The acme-challenge location on port 80.** Without it certificates cannot be issued or renewed.
 
 **Access logging stays off.** A node should not retain a record of who passed through it and when.
 

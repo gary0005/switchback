@@ -18,6 +18,11 @@ angie_cert_name: "{{ inventory_hostname }}"
 # `acme_node_cert_dir`.
 angie_cert_dir: "/etc/ssl/switchback/{{ angie_cert_name }}"
 
+# Where the acme role's hook drops http-01 challenge files. Must match
+# `acme_webroot`. Served on port 80 ahead of the redirect to HTTPS — that
+# prefix is how every certificate here is issued and renewed.
+angie_acme_webroot: /var/www/acme
+
 # Document root of the public site. A domain serving nothing at / fails the
 # first active probe, so this is load-bearing, not decoration. Populated by
 # the website role; must match `website_root`.

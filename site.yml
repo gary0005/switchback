@@ -30,9 +30,10 @@
         name: common
       tags: [common]
 
-    # Before angie, which will not start without the certificate. dns-01 does
-    # not need angie running, so there is no ordering problem to work around.
-    - name: Issue TLS certificates
+    # Webroot, placeholder certificate and the hook. The real certificate
+    # cannot be obtained yet: http-01 is answered by angie, which is not
+    # running.
+    - name: Prepare for certificate issue
       ansible.builtin.import_role:
         name: acme
       tags: [acme, certs]
@@ -64,6 +65,20 @@
       ansible.builtin.import_role:
         name: firewall
       tags: [firewall]
+
+    # angie has to be listening before the challenge can be answered, and its
+    # configuration only reaches the running process when handlers fire.
+    - name: Apply pending restarts and reloads
+      ansible.builtin.meta: flush_handlers
+
+    # Port 80 answers now, so ask for the real certificate. The hook puts the
+    # challenge file on every node carrying the name, then the result is
+    # installed over the placeholder.
+    - name: Issue TLS certificates
+      ansible.builtin.import_role:
+        name: acme
+        tasks_from: issue
+      tags: [acme, certs]
 
 # A separate play so the handlers of the one above have already run. Within a
 # play, handlers fire at the end — checking before that would test the
