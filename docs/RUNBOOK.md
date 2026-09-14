@@ -1,18 +1,12 @@
 # Runbook
 
-Deploying this from nothing, and running it afterwards. Assumes you are
-comfortable in a terminal and have not used Ansible before.
+Deploying this from nothing, and running it afterwards. Assumes you are comfortable in a terminal and have not used Ansible before.
 
-For what the deployment *is* and why it is shaped this way, read the
-[README](../README.md) first. This file is the sequence of commands.
+For what the deployment *is* and why it is shaped this way, read the [README](../README.md) first. This file is the sequence of commands.
 
 ## How Ansible works here
 
-Ansible is ssh plus templates. Nothing is installed on the nodes to support it:
-you run `ansible-playbook` on your own machine, it connects to each node over
-SSH and carries out a list of steps — install a package, write a file, restart a
-service. Every step is written so it can run repeatedly; a second run changes
-nothing unless the repository changed.
+Ansible is ssh plus templates. Nothing is installed on the nodes to support it: you run `ansible-playbook` on your own machine, it connects to each node over SSH and carries out a list of steps — install a package, write a file, restart a service. Every step is written so it can run repeatedly; a second run changes nothing unless the repository changed.
 
 Three words you will meet:
 
@@ -22,10 +16,7 @@ Three words you will meet:
 | role | the steps for one thing: install xray, configure angie — [`roles/`](../roles/) |
 | playbook | what runs where — [`site.yml`](../site.yml) |
 
-One property matters more than the rest: **everything derives from one secret.**
-Paths, user UUIDs and subscription tokens are not stored anywhere, they are
-recomputed from `vault_seed` on every run. There is no state to lose — and no
-way to change the seed without changing all of it at once.
+One property matters more than the rest: **everything derives from one secret.** Paths, user UUIDs and subscription tokens are not stored anywhere, they are recomputed from `vault_seed` on every run. There is no state to lose — and no way to change the seed without changing all of it at once.
 
 ## 1. Tooling
 
@@ -35,45 +26,17 @@ pip install pre-commit && pre-commit install
 uv run ansible --version
 ```
 
-Every command below is `uv run ansible-…`. `.venv/bin/ansible-…` is the same
-thing if you prefer.
+Every command below is `uv run ansible-…`. `.venv/bin/ansible-…` is the same thing if you prefer.
 
-## 2. Reach the nodes
+## 2. Fill in the inventory
 
-The roles connect as `root`, set in
-[`inventory/group_vars/all/ansible.yml`](../inventory/group_vars/all/ansible.yml).
-`ssh root@<node>` has to work with a key and no password. If your provider only
-gives you an unprivileged user, switch that file to `become` instead.
-
-Host key checking is deliberately on, so each node has to be in `known_hosts`
-before Ansible will talk to it:
-
-```bash
-ssh-keyscan -H <address> >> ~/.ssh/known_hosts
-```
-
-Compare the fingerprint against your provider's console. Accepting whatever key
-appears first is what host key checking exists to prevent.
-
-Then check the connection — this configures nothing:
-
-```bash
-uv run ansible vpn -m ping
-```
-
-Every node should answer `pong`.
-
-## 3. Fill in the inventory
-
-**Addresses and domains.** The real `host_vars` files are gitignored, so start
-from the committed examples:
+**Addresses and domains.** The real `host_vars` files are gitignored, so start from the committed examples:
 
 ```bash
 for h in inventory/host_vars/*/; do cp "$h/main.yml.example" "$h/main.yml"; done
-$EDITOR inventory/host_vars/*/main.yml
 ```
 
-Each needs the node's address and the names it answers to:
+Then edit all four `inventory/host_vars/*/main.yml` files. Each needs the node's address and the names it answers to:
 
 ```yaml
 ansible_host: 198.51.100.7
@@ -82,14 +45,9 @@ vpn_domains:
   - example.com         # alias: the shared apex, if this node serves it
 ```
 
-The first domain is the node's primary. The rest are aliases and go into the
-same certificate. An apex shared across nodes is a DNS round robin — fine for
-the site, useless for a chain, which has to reach the node it names.
+The first domain is the node's primary. The rest are aliases and go into the same certificate. An apex shared across nodes is a DNS round robin — fine for the site, useless for a chain, which has to reach the node it names.
 
-**Chains and users** live in
-[`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The
-chain list is already written; what you need to set is the roster and the
-notification address:
+**Chains and users** live in [`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The chain list is already written; what you need to set is the roster and the notification address:
 
 ```yaml
 vpn_users:
@@ -99,18 +57,37 @@ vpn_users:
 acme_email: "you@example.com"             # Let's Encrypt expiry notices
 ```
 
-`rot` is a rotation counter. Bumping one user's `rot` reissues their UUID and
-their link; nobody else is affected.
+`rot` is a rotation counter. Bumping one user's `rot` reissues their UUID and their link; nobody else is affected.
 
-**Membership** is in [`inventory/hosts.yml`](../inventory/hosts.yml). A node
-listed under `unmanaged` is skipped by every play — that is how a node already
-carrying live traffic stays untouched while its peers still read its domain out
-of the inventory.
+**Membership** is in [`inventory/hosts.yml`](../inventory/hosts.yml). A node listed under `unmanaged` is skipped by every play — that is how a node already carrying live traffic stays untouched while its peers still read its domain out of the inventory.
+
+## 3. Reach the nodes
+
+The roles connect as `root`, set in [`inventory/group_vars/all/ansible.yml`](../inventory/group_vars/all/ansible.yml). `ssh root@<node>` has to work with a key and no password. If your provider only gives you an unprivileged user, switch that file to `become` instead.
+
+Host key checking is deliberately on, so each node has to be in `known_hosts` before Ansible will talk to it. **Scan exactly the value you put in `ansible_host`** — an address there means the entry has to be under that address. A `known_hosts` full of domain names does nothing for a connection made to an IP: with `-H` the name is hashed, and the hash of the domain is not the hash of the address. The error is `Host key verification failed`, reported as `UNREACHABLE`.
+
+```bash
+ssh-keyscan -T 10 -H 198.51.100.7 >> ~/.ssh/known_hosts
+```
+
+`-T 10` because the default five-second timeout is enough for a node under load to return nothing at all, silently, leaving you with an empty entry and the same error.
+
+Compare the fingerprint against your provider's console. Accepting whatever key appears first is what host key checking exists to prevent.
+
+The command also writes `# 198.51.100.7:22 SSH-2.0-OpenSSH_…` banner lines into the file. Those are comments, `known_hosts` ignores them, and they are harmless — leave them alone. Stripping the `#` is what turns them into lines ssh cannot parse.
+
+Then check the connection — this configures nothing:
+
+```bash
+uv run ansible 'vpn:!unmanaged' -m ping
+```
+
+Every managed node should answer `pong`. The `!unmanaged` matters: a node held out of the deployment usually has no key of yours either, so plain `vpn` reports it as unreachable and that is correct rather than a problem to fix.
 
 ## 4. Create the vault
 
-The vault is an encrypted YAML file that Ansible decrypts in memory for the
-length of a run.
+The vault is an encrypted YAML file that Ansible decrypts in memory for the length of a run.
 
 ```bash
 openssl rand -hex 32                       # this is your vault_seed
@@ -121,15 +98,11 @@ uv run ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/va
 shred -u /tmp/vault.yml                    # rm -P on macOS
 ```
 
-**Put the vault password in a password manager.** Losing it means generating a
-new seed, which changes every path and every subscription link.
+**Put the vault password in a password manager.** Losing it means generating a new seed, which changes every path and every subscription link.
 
-To stop typing it on every run, write it to `.vault_pass` (gitignored) and
-uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop
-`--ask-vault-pass` from the commands below.
+To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
 
-The DNS token needs `Zone:DNS:Edit` on the zone — certbot proves domain
-ownership with it over dns-01.
+The DNS token needs `Zone:DNS:Edit` on the zone — certbot proves domain ownership with it over dns-01.
 
 ## 5. DNS
 
@@ -142,19 +115,11 @@ terraform apply
 cd ..
 ```
 
-**One record per name a node answers to**, which means `records` here has to
-mirror `vpn_domains` across all the `host_vars` files. Nothing checks that for
-you: get it wrong and the symptom is certbot failing on a name that does not
-resolve, or a browser complaining about a certificate that does not cover the
-name it was given.
+**One record per name a node answers to**, which means `records` here has to mirror `vpn_domains` across all the `host_vars` files. Nothing checks that for you: get it wrong and the symptom is certbot failing on a name that does not resolve, or a browser complaining about a certificate that does not cover the name it was given.
 
-A node that does not carry the apex in its `vpn_domains` must not appear among
-the apex records either. Apex records are a round robin — a third of visitors
-would land on a node with no certificate for that name and no site behind it.
-That is why an unmanaged node usually has one record and not two.
+A node that does not carry the apex in its `vpn_domains` must not appear among the apex records either. Apex records are a round robin — a third of visitors would land on a node with no certificate for that name and no site behind it. That is why an unmanaged node usually has one record and not two.
 
-Records must resolve **before** the first run — certificates cannot be issued
-until they do:
+Records must resolve **before** the first run — certificates cannot be issued until they do:
 
 ```bash
 dig +short v0.example.com
@@ -162,10 +127,7 @@ dig +short v0.example.com
 
 ### If a record already exists
 
-Terraform assumes it created everything in `records`. A name that is already in
-the zone — likely for any node that was doing something before this repository
-existed — makes `apply` fail with "record already exists", and it fails the
-whole plan, not just that record. Import it into state first:
+Terraform assumes it created everything in `records`. A name that is already in the zone — likely for any node that was doing something before this repository existed — makes `apply` fail with "record already exists", and it fails the whole plan, not just that record. Import it into state first:
 
 ```bash
 terraform import \
@@ -173,25 +135,19 @@ terraform import \
   <zone_id>/<record_id>
 ```
 
-The key in brackets is `name|content`, exactly as the `for_each` builds it.
-`record_id` comes from the Cloudflare dashboard or its API.
+The key in brackets is `name|content`, exactly as the `for_each` builds it. `record_id` comes from the Cloudflare dashboard or its API.
 
 ## 6. First run, one node at a time
 
-Start with a node that has a single-hop test chain. It proves the whole shape
-works — angie, certificate, xray, egress — without depending on any other node
-being ready.
+Start with a node that has a single-hop test chain. It proves the whole shape works — angie, certificate, xray, egress — without depending on any other node being ready.
 
 ```bash
 uv run ansible-playbook site.yml --limit v3 --skip-tags verify --ask-vault-pass
 ```
 
-`--limit` restricts the run to one node. `--skip-tags verify` leaves the checks
-out: this node's two-hop chains point at nodes that do not exist yet, and the
-check would correctly fail on them.
+`--limit` restricts the run to one node. `--skip-tags verify` leaves the checks out: this node's two-hop chains point at nodes that do not exist yet, and the check would correctly fail on them.
 
-Expect a few minutes, most of it certbot waiting for the DNS record to
-propagate. Then look at it yourself:
+Expect a few minutes, most of it certbot waiting for the DNS record to propagate. Then look at it yourself:
 
 ```bash
 curl -I https://v3.example.com
@@ -214,17 +170,12 @@ uv run ansible-playbook site.yml --tags verify --limit v3 --ask-vault-pass
 The [`verify` role](../roles/verify/README.md) does three things:
 
 1. asserts xray holds **no** network socket — every inbound is a unix socket;
-2. asserts only 22, 80 and 443 are reachable and nftables still drops by
-   default;
-3. starts a throwaway client and actually sends traffic through each chain,
-   comparing the address it came out at against the chain's exit node.
+2. asserts only 22, 80 and 443 are reachable and nftables still drops by default;
+3. starts a throwaway client and actually sends traffic through each chain, comparing the address it came out at against the chain's exit node.
 
-The first two protect the property the whole design rests on: nothing reaches
-xray without passing through angie. The third is the only one that tells you it
-*works* rather than that it is configured.
+The first two protect the property the whole design rests on: nothing reaches xray without passing through angie. The third is the only one that tells you it *works* rather than that it is configured.
 
-With one node up, only its test chain passes, and it exits at itself. That is
-correct.
+With one node up, only its test chain passes, and it exits at itself. That is correct.
 
 ## 8. The remaining nodes
 
@@ -234,22 +185,13 @@ uv run ansible-playbook site.yml --limit v0 --skip-tags verify --ask-vault-pass
 uv run ansible-playbook site.yml --ask-vault-pass          # everything, with checks
 ```
 
-The final run reports each chain: `v0-v2 came out at …, expected …`. This is
-where assumptions about which nodes can reach which get settled by measurement.
+The final run reports each chain: `v0-v2 came out at …, expected …`. This is where assumptions about which nodes can reach which get settled by measurement.
 
 ### Taking over an unmanaged node
 
-A node in the `unmanaged` group is skipped, and chains touching it are kept out
-of subscriptions — nothing is listening at the far end, so publishing them would
-hand users links that cannot work. The chains themselves are declared all along;
-only the far end is missing.
+A node in the `unmanaged` group is skipped, and chains touching it are kept out of subscriptions — nothing is listening at the far end, so publishing them would hand users links that cannot work. The chains themselves are declared all along; only the far end is missing.
 
-**Taking one over is destructive to whatever it was doing.** The first run
-overwrites `/etc/angie/`, replaces `/usr/local/etc/xray/config.json`, and
-applies an nftables ruleset that flushes what was there and leaves only 22, 80
-and 443 open. Anything the node was serving on another port, or under another
-configuration, stops at that moment, and its existing users need new
-subscriptions issued from here. Plan the changeover before you start it.
+**Taking one over is destructive to whatever it was doing.** The first run overwrites `/etc/angie/`, replaces `/usr/local/etc/xray/config.json`, and applies an nftables ruleset that flushes what was there and leaves only 22, 80 and 443 open. Anything the node was serving on another port, or under another configuration, stops at that moment, and its existing users need new subscriptions issued from here. Plan the changeover before you start it.
 
 When you are ready:
 
@@ -261,10 +203,7 @@ uv run ansible-playbook site.yml --tags users --ask-vault-pass
 uv run ansible-playbook site.yml --tags verify --ask-vault-pass
 ```
 
-The `users` run is what puts the newly usable chains into everyone's
-subscription; the `verify` run is what confirms they carry traffic. If the node
-should also serve the shared apex, add it to that node's `vpn_domains` and add
-the matching DNS record before the first command.
+The `users` run is what puts the newly usable chains into everyone's subscription; the `verify` run is what confirms they carry traffic. If the node should also serve the shared apex, add it to that node's `vpn_domains` and add the matching DNS record before the first command.
 
 ## 9. Hand out subscriptions
 
@@ -273,12 +212,9 @@ uv run ansible-playbook site.yml --tags subscription -v \
   -e subscription_show_links=true --ask-vault-pass
 ```
 
-**The link is the credential.** Whoever holds it has access, which is why it is
-not printed by default. Send it over something private, not a group chat.
+**The link is the credential.** Whoever holds it has access, which is why it is not printed by default. Send it over something private, not a group chat.
 
-Users paste it into their client as a *subscription*; configs then update
-themselves. The same URL with `.html` appended is a readable page with the link,
-a copy button and a short explanation — easier to send to someone non-technical.
+Users paste it into their client as a *subscription*; configs then update themselves. The same URL with `.html` appended is a readable page with the link, a copy button and a short explanation — easier to send to someone non-technical.
 
 Give people the link from whichever node stays reachable for them.
 
@@ -298,8 +234,21 @@ Give people the link from whichever node stays reachable for them.
 
 ## 11. When something breaks
 
-Run `--tags verify` first. It prints what every chain answered before it fails,
-and that answer narrows things down immediately:
+### `UNREACHABLE` on every node
+
+Ansible never got as far as the node, so nothing in the roles is involved. Add `-vvv` and read the line above the failure — it names the cause:
+
+| Cause | Fix |
+|---|---|
+| `Host key verification failed` | the address in `ansible_host` is not in `known_hosts`; scan that exact value, not the domain that resolves to it |
+| `Permission denied (publickey)` | your key is not in that node's `root` authorized_keys, or the provider only allows an unprivileged user |
+| `Connection timed out` | wrong address, or the provider's own firewall is in front of port 22 |
+
+`ansible_host` deliberately holds an address rather than a name: it keeps deployment independent of DNS, and `vpn_egress_ip` defaults to it, which the chain checks compare against. Putting a domain there would break that comparison.
+
+### A chain does not come out where it should
+
+Run `--tags verify` first. It prints what every chain answered before it fails, and that answer narrows things down immediately:
 
 | Answer | Meaning | Where to look |
 |---|---|---|
@@ -307,9 +256,7 @@ and that answer narrows things down immediately:
 | the entry node's own address | the second hop did not happen; traffic left where it arrived | the routing rule for that inbound, and whether the outbound can reach the far node |
 | some third address | the node egresses from a different address than it accepts management traffic on | set `vpn_egress_ip` for that host and re-run |
 
-Two causes account for most "it all suddenly stopped": **clock drift**, which
-VLESS does not tolerate, and an **expired certificate**. `chrony` and certbot's
-renewal timer handle both, so check that both are actually running:
+Two causes account for most "it all suddenly stopped": **clock drift**, which VLESS does not tolerate, and an **expired certificate**. `chrony` and certbot's renewal timer handle both, so check that both are actually running:
 
 ```bash
 uv run ansible vpn -m command -a 'chronyc tracking'
@@ -330,11 +277,6 @@ pre-commit run --all-files
 uv run ansible-playbook site.yml --syntax-check
 ```
 
-To exercise the templates without any nodes, render them locally: a throwaway
-playbook with `connection: local` that pulls each role's `defaults/main.yml` in
-through `vars_files` and runs `ansible.builtin.template` against the files in
-`roles/*/templates/`. Rendering all of them for every node takes a few seconds
-and catches most mistakes before a node ever sees them.
+To exercise the templates without any nodes, render them locally: a throwaway playbook with `connection: local` that pulls each role's `defaults/main.yml` in through `vars_files` and runs `ansible.builtin.template` against the files in `roles/*/templates/`. Rendering all of them for every node takes a few seconds and catches most mistakes before a node ever sees them.
 
-After changing topology, angie or xray, finish with `--tags verify`. Everything
-else can pass on a deployment that does not carry a single byte.
+After changing topology, angie or xray, finish with `--tags verify`. Everything else can pass on a deployment that does not carry a single byte.

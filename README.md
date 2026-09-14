@@ -85,8 +85,10 @@ $EDITOR /tmp/vault.yml
 ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
 shred -u /tmp/vault.yml
 
-# 3. Seed known_hosts — host key checking is on, verify these out of band
-ssh-keyscan -H 203.0.113.10 >> ~/.ssh/known_hosts
+# 3. Seed known_hosts — host key checking is on, verify these out of band.
+#    Scan the same value ansible_host holds: an entry for the domain does
+#    nothing for a connection made to an address.
+ssh-keyscan -T 10 -H 203.0.113.10 >> ~/.ssh/known_hosts
 
 # 4. DNS — records must resolve before certificates are issued
 cd terraform && terraform init && terraform apply && cd ..
