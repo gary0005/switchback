@@ -1,10 +1,10 @@
 ---
-xray_version: "25.3.6"
+xray_version: "26.3.27"
 
-# SHA256 of Xray-linux-64.zip for the pinned version, in `get_url` format,
-# e.g. "sha256:9f86d081...". Empty means the download is NOT verified: the
-# binary runs as root, so fill this in from the release's .dgst file.
-xray_archive_checksum: ""
+# SHA256 of Xray-linux-64.zip for the pinned version, in `get_url` format.
+# Empty would mean the download is NOT verified, and the binary runs as root.
+# Taken from the release's .dgst file; update it whenever xray_version moves.
+xray_archive_checksum: "sha256:23cd9af937744d97776ee35ecad4972cf4b2109d1e0fe6be9930467608f7c8ae"
 
 xray_download_url: >-
   https://github.com/XTLS/Xray-core/releases/download/v{{ xray_version }}/Xray-linux-64.zip

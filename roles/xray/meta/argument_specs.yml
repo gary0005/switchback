@@ -18,15 +18,14 @@ argument_specs:
       xray_version:
         description: Xray-core release to install.
         type: str
-        default: "25.3.6"
+        default: "26.3.27"
       xray_archive_checksum:
         description:
           - SHA256 of Xray-linux-64.zip in get_url format, for example
             "sha256:9f86d081...". Empty means the download is not verified,
-            and the binary runs as root, so filling this in is strongly
-            recommended.
+            and the binary runs as root. Taken from the release's .dgst file;
+            update it whenever xray_version moves.
         type: str
-        default: ""
       xray_download_url:
         description: Where the release archive is fetched from.
         type: str
