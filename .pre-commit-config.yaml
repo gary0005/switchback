@@ -30,6 +30,18 @@ repos:
         additional_dependencies:
           - ansible-core>=2.21
 
+  # The scanners below skip vault files, because an encrypted payload is
+  # high-entropy by definition and would be flagged on every commit. That
+  # exemption is exactly why an *unencrypted* vault would sail through, so it
+  # is checked separately.
+  - repo: local
+    hooks:
+      - id: vault-encrypted
+        name: Vault files are encrypted
+        entry: scripts/assert-vault-encrypted.sh
+        language: script
+        files: ^inventory/group_vars/.*vault\.yml$
+
   # The whole deployment derives from one vault_seed: a single plaintext leak
   # compromises every path, port, UUID and subscription token at once.
   - repo: https://github.com/Yelp/detect-secrets
