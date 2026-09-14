@@ -5,15 +5,20 @@
 # network, and it is angie.
 verify_expected_ports: [22, 80, 443]
 
-# Process names permitted to hold a listening TCP or UDP socket. xray is
-# deliberately absent — every one of its inbounds is a unix socket, so a
-# network listener owned by xray means the topology has grown a direct route
-# that the censor can find and block.
+# Processes allowed to hold a listening socket on a port outside the list
+# above. These are system clients, not services: a DHCP client binds 68 but
+# nothing can reach it, because the firewall drops inbound there and conntrack
+# is what lets the lease renewal answer come back.
+#
+# xray is deliberately absent — every one of its inbounds is a unix socket, so
+# a network listener owned by xray means the topology has grown a direct route
+# that the censor can find and block. Process names come from `ss`, which
+# truncates them to 15 characters.
 verify_allowed_listeners:
-  - angie
-  - sshd
+  - systemd-network
   - systemd-resolve
   - chronyd
+  - dhclient
 
 # --- Live chain checks -----------------------------------------------------
 # Dial each chain this node fronts the way a client does, and compare where

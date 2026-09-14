@@ -27,30 +27,41 @@
     __verify_xray_bound: >-
       {{ __verify_listeners.stdout_lines | default([]) | select('search', '"xray"') | list }}
 
-- name: Read publicly bound ports
+# Port and owner together: a port outside the expected set is only a finding
+# when something unexpected holds it. A DHCP client on 68 is not reachable —
+# the firewall drops inbound there and conntrack lets the lease answer back —
+# whereas the same port held by something nobody can name is worth stopping
+# for.
+- name: Read publicly bound ports and what holds them
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -o pipefail
-      ss -H -ltun \
-        | awk '$5 !~ /^(127\.|\[::1\])/ { n = split($5, a, ":"); print a[n] }' \
-        | sort -un
+      ss -H -ltunp \
+        | awk '$5 !~ /^(127\.|\[::1\])/ {
+                 n = split($5, a, ":"); port = a[n];
+                 owner = "unknown";
+                 if (match($0, /\(\("[^"]+"/)) {
+                     owner = substr($0, RSTART + 3, RLENGTH - 4);
+                 }
+                 print port, owner
+               }' \
+        | sort -u
   register: __verify_ports
   changed_when: false
   check_mode: false
 
-- name: Assert nothing unexpected is reachable from the network
+- name: Assert nothing unexpected is listening
   ansible.builtin.assert:
     that: __verify_unexpected | length == 0
     fail_msg: >-
-      Unexpected ports open to the network: {{ __verify_unexpected | join(', ') }}.
-      Only {{ verify_expected_ports | join(', ') }} may be reachable.
-    success_msg: "Reachable ports: {{ verify_expected_ports | join(', ') }}."
+      Unexpected listeners: {{ __verify_unexpected | join('; ') }}.
+      Only {{ verify_expected_ports | join(', ') }} may be open, and only
+      {{ verify_allowed_listeners | join(', ') }} may hold anything else.
+    success_msg: >-
+      Nothing listening beyond {{ verify_expected_ports | join(', ') }} and
+      known system clients.
     quiet: true
-  vars:
-    __verify_unexpected: >-
-      {{ __verify_ports.stdout_lines | default([]) | map('int')
-         | difference(verify_expected_ports) | list }}
 
 - name: Read the firewall ruleset
   ansible.builtin.command: nft list ruleset

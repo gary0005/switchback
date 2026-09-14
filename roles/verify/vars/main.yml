@@ -1,10 +1,28 @@
 ---
 # Internal to the role: computed from its inputs, not part of its interface.
 
+# A listening socket is a finding when it is on an unexpected port *and* held
+# by something that is not a known system client. That second half is what
+# keeps a DHCP client on port 68 from failing the run: it is not reachable —
+# the firewall drops inbound there — while an unrecognised process on the
+# same port still is worth stopping for.
+__verify_unexpected: >-
+  {%- set out = [] -%}
+  {%- for line in __verify_ports.stdout_lines | default([]) -%}
+  {%-   set parts = line.split() -%}
+  {%-   set port = parts[0] | int -%}
+  {%-   set owner = parts[1] | default('unknown', true) -%}
+  {%-   if port not in verify_expected_ports
+          and owner not in verify_allowed_listeners -%}
+  {%-     set _ = out.append(owner ~ ' on port ' ~ port) -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ out }}
+
 # Names whose records disagree with the inventory: one that does not resolve,
 # and one that resolves somewhere this node is not. A name pointing at several
-# nodes is fine — the shared apex does exactly that, and dns-01 does not care
-# which node a visitor lands on.
+# nodes is fine — the shared apex does exactly that, and the challenge is
+# distributed to all of them.
 __verify_dns_problems: >-
   {%- set out = [] -%}
   {%- for r in __verify_dns.results -%}
@@ -42,6 +60,7 @@ __verify_live_chains: >-
 # A chain fails if it did not answer at all, or answered from an address that
 # is not its exit node's. The second case is the interesting one: it means the
 # traffic went out somewhere other than where the user was promised.
+
 __verify_failed_chains: >-
   {%- set out = [] -%}
   {%- for r in __verify_probes.results -%}
