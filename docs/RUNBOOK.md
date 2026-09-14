@@ -61,7 +61,7 @@ vpn_users:
 
 `rot` is a rotation counter. Bumping one user's `rot` reissues their UUID and their link; nobody else is affected.
 
-**`name` is a label, not a person.** It derives the user's UUID and subscription token and tags them in xray's config — which means it is written in clear text onto every node, so real names do not belong here and the vault would not help. Keep who-is-who wherever you keep the vault password. And pick a label once: renaming it reissues that user's access, exactly as bumping `rot` does.
+`name` is a label, not a person — it lands in clear text on every node. Adding, removing and reissuing users has its own page: [USERS.md](USERS.md).
 
 The address Let's Encrypt notifies is not here — it goes in the vault, in the next step but one. This file is committed, and a plain-text address in a repository is an address that gets scraped.
 
@@ -234,10 +234,7 @@ Give people the link from whichever node stays reachable for them.
 
 | Task | How |
 |---|---|
-| Add a user | a line under `vpn_users`, then `--tags users` |
-| Revoke access | remove the line, `--tags users`, then delete their file from `/var/www/sub` |
-| Reissue someone's link | `rot: 2` for them, then `--tags users` |
-| Change a tier | `tier: main` ↔ `tier: all`, then `--tags users` |
+| Anything about users | see [USERS.md](USERS.md) — add, remove, reissue, tiers |
 | Add a chain | an entry under `vpn_chains`, then a full run |
 | Add a node | `hosts.yml`, its `host_vars` pair, its chains, a DNS record |
 | Change the site | edit [`roles/website/files/site/`](../roles/website/files/site/), then `--tags website` |

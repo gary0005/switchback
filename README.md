@@ -67,9 +67,9 @@ The `vpn_*` layer is not decoration. Role defaults are only in scope for hosts o
 
 ## Usage
 
-The short version is below; [docs/RUNBOOK.md](docs/RUNBOOK.md) walks through the
-same sequence with what to expect at each step, and covers day-to-day operation
-and debugging.
+The short version is below. [docs/RUNBOOK.md](docs/RUNBOOK.md) walks through the
+same sequence with what to expect at each step and covers debugging;
+[docs/USERS.md](docs/USERS.md) covers the roster.
 
 ```bash
 pip install pre-commit && pre-commit install
@@ -108,10 +108,7 @@ The last play checks what the first one built: it asserts the node exposes nothi
 
 | Task | Action |
 |---|---|
-| Add a user | one line under `vpn_users:`, then `--tags users` |
-| Revoke access | remove the line, re-run with `--tags users`, delete the stale file from `/var/www/sub` |
-| Reissue one user's UUID and link | set `rot: 2` for that user, then `--tags users` |
-| Change a user's tier | `tier: main` to `tier: all` and back, then `--tags users` |
+| Add, remove or reissue a user | one line under `vpn_users:`, then `--tags users` — [docs/USERS.md](docs/USERS.md) |
 | Add a chain | one entry under `vpn_chains:`, then a full run |
 | Add a node | `hosts.yml`, `host_vars/<host>/main.yml` and its `.example`, its chains, a DNS record |
 | Take over an unmanaged node | remove it from the `unmanaged` group, run, then `--tags users` |
