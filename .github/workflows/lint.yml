@@ -27,6 +27,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install 'ansible-core>=2.16' ansible-lint yamllint
 
+      # ansible.cfg points vault_password_file at .vault_pass, which is
+      # gitignored — so it does not exist here, and every ansible command
+      # fails on the missing file before it does any work. The contents do not
+      # matter: linting and --syntax-check never decrypt the vault, they only
+      # need the file to be present. A wrong password gets exactly as far.
+      - name: Provide a throwaway vault password
+        run: printf 'ci-does-not-decrypt-anything' > .vault_pass
+
       - name: yamllint
         run: yamllint --strict .
 
