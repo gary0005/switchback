@@ -29,7 +29,7 @@ uv run ansible-playbook site.yml --tags subscription -v -e subscription_show_lin
 
 Links are not printed by default, because the token in the URL *is* the access — printing one writes a credential into your shell history and into any log that captures the run. Send it over something private.
 
-The link points at the shared apex rather than at one node, so it keeps working whichever node answers. The same URL with `.html` appended is a readable page with a copy button and a short explanation, which is the one to send to someone who has never set up a VPN client.
+The link points at the shared apex rather than at one node, so it keeps working whichever node answers. The same URL with `.html` appended is a readable page with a copy button and a short explanation, which is the one to send to someone who has never set up a VPN client. It carries every language in `subscription_page_langs` at once and follows the reader's browser, so there is nothing to pick before sending it.
 
 ## Tiers
 

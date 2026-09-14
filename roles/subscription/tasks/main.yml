@@ -21,7 +21,7 @@
 
 - name: Render human-readable pages
   ansible.builtin.template:
-    src: "index.{{ subscription_page_lang }}.html.j2"
+    src: index.html.j2
     dest: "{{ subscription_root }}/{{ __subscription_token }}.html"
     mode: "0644"
     backup: true

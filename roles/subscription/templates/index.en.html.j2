@@ -1,37 +1,13 @@
-{%- set token = ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] -%}
-{#- Routes are counted, not named: the node names are internal, and a user's
-    page is the last place to describe the topology. -#}
-{%- set kinds = subscription_tier_kinds[item['tier']] -%}
-{%- set avail = subscription_chains | map(attribute='name')
-                | map('extract', subscription_chain_data)
-                | selectattr('kind', 'in', kinds) | list -%}
-{%- set n_multi = avail | selectattr('kind', 'eq', 'multi') | list | length -%}
-{%- set n_test = avail | selectattr('kind', 'eq', 'test') | list | length -%}
-<!doctype html>
-<!-- {{ ansible_managed }} -->
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Subscription</title>
-<style>
-  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto;
-         padding: 0 1.25rem; line-height: 1.6; color: #1a1a1a; }
-  code { background: #f3f3f1; padding: .15rem .35rem; border-radius: 4px;
-         word-break: break-all; font-size: .9em; }
-  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; }
-  button { border: 1px solid #ccc; background: #fff; border-radius: 6px;
-           padding: .3rem .7rem; cursor: pointer; font: inherit; }
-  small { color: #666; }
-</style>
-</head>
-<body>
+{#- The body of the page in one language. index.html.j2 wraps it, and computes
+    token, sub_url, n_multi and n_test before including it. Adding a language
+    means adding a sibling of this file and naming it in
+    `subscription_page_langs` — nothing else. -#}
 <h1>Subscription</h1>
 
 <p>Paste this link into your client as a <em>subscription</em> — configs will keep themselves up to date.</p>
 <div class="row">
-  <code id="sub">https://{{ subscription_domain }}{{ subscription_prefix }}/{{ token }}</code>
-  <button onclick="copy('sub')">Copy</button>
+  <code>{{ sub_url }}</code>
+  <button onclick="copy(this)">Copy</button>
 </div>
 
 <p><small>
@@ -55,11 +31,3 @@
       several times slower, and on a weak link it stops holding at all. Try h3
       only if h2 disappoints you.</li>
 </ul>
-
-<script>
-function copy(id) {
-  navigator.clipboard.writeText(document.getElementById(id).textContent);
-}
-</script>
-</body>
-</html>

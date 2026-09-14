@@ -233,7 +233,11 @@ acme_email: "{{ vault_acme_email }}"
 
 firewall_ssh_allowed_cidrs: []     # e.g. ["203.0.113.0/24"]; empty = 22 open
 
-# Language of the user-facing subscription page
+# Languages the subscription page offers
 # (roles/subscription/templates/index.<lang>.html.j2). Everything else in this
-# repo is English; this is the one string set your end users actually read.
-subscription_page_lang: en
+# repo is English; this is the one string set your end users actually read, and
+# they read it in whichever of these their browser asks for. Russian leads
+# because that is what every user so far reads when the browser says nothing.
+subscription_page_langs:
+  - ru
+  - en

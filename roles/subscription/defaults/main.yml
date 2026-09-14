@@ -3,9 +3,12 @@
 # monitor, and every angie node serves the identical set.
 subscription_root: /var/www/sub
 
-# Language of the user-facing page (templates/index.<lang>.html.j2). Add
-# another file to support another language.
-subscription_page_lang: en
+# Languages the user-facing page offers (templates/index.<lang>.html.j2). All
+# of them ship in the one file and the reader switches between them, so adding
+# a language costs a few hundred bytes rather than a second file per user. The
+# first entry is the fallback for a browser that asks for neither.
+subscription_page_langs:
+  - en
 
 # Hint clients put in the Subscription-Userinfo flow, in hours.
 subscription_update_interval: 12

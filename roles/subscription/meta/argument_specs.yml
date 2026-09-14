@@ -19,13 +19,19 @@ argument_specs:
           - Directory the payloads are written to. Must match angie_sub_root.
         type: str
         default: /var/www/sub
-      subscription_page_lang:
+      subscription_page_langs:
         description:
-          - Language of the user-facing page. Selects
-            templates/index.<lang>.html.j2, so adding a language means adding
-            that template.
-        type: str
-        default: en
+          - Languages the user-facing page offers, each pulling in
+            templates/index.<lang>.html.j2. All of them ship in the one file
+            and the reader switches between them, so this is a list of what is
+            available rather than a choice made at deploy time.
+          - The first entry is the fallback. A reader whose browser asks for
+            one of the languages gets it without touching the switch, and a
+            choice made on the page is remembered for next time.
+        type: list
+        elements: str
+        default:
+          - en
       subscription_update_interval:
         description: Refresh interval hint given to clients, in hours.
         type: int

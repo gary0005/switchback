@@ -226,7 +226,7 @@ uv run ansible-playbook site.yml --tags subscription -v \
 
 **The link is the credential.** Whoever holds it has access, which is why it is not printed by default. Send it over something private, not a group chat.
 
-Users paste it into their client as a *subscription*; configs then update themselves. The same URL with `.html` appended is a readable page with the link, a copy button and a short explanation — easier to send to someone non-technical.
+Users paste it into their client as a *subscription*; configs then update themselves. The same URL with `.html` appended is a readable page with the link, a copy button and a short explanation — easier to send to someone non-technical. It ships every language in `subscription_page_langs` and follows the reader's browser.
 
 Give people the link from whichever node stays reachable for them.
 

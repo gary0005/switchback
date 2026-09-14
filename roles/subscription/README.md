@@ -57,7 +57,7 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `subscription_chains` | `{{ vpn_chains_ready }}` | Chains to publish |
 | `subscription_chain_data` | `{{ vpn_chain_data }}` | Per-chain kinds and paths |
 | `subscription_alpns` | `[h2, h3]` | One link per ALPN per chain |
-| `subscription_page_lang` | `en` | Selects `templates/index.<lang>.html.j2` |
+| `subscription_page_langs` | `[en]` | Languages the page offers; first is the fallback |
 | `subscription_show_links` | `false` | Whether to print the links during the run |
 | `subscription_root` | `/var/www/sub` | Where payloads are written |
 | `subscription_domain` | `{{ vpn_apex }}` | Domain the subscription URL points at — the shared apex |
@@ -71,12 +71,14 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
   ansible.builtin.import_role:
     name: subscription
   vars:
-    subscription_page_lang: ru
+    subscription_page_langs: [ru, en]
 ```
 
 ## Adding a language
 
-Add `templates/index.<lang>.html.j2` and set `subscription_page_lang`. Everything else in this repository is English; this is the one string set your end users actually read.
+Add `templates/index.<lang>.html.j2` and name the language in `subscription_page_langs`. The file holds the body for that language and nothing else — [`templates/index.html.j2`](templates/index.html.j2) wraps it and computes `sub_url`, `n_multi` and `n_test` before including it.
+
+Every configured language ships in the same file and the reader switches with a control on the page, so a language costs a few hundred bytes rather than a second file per user. A browser asking for one of them gets it without touching the switch, and a choice made on the page is remembered. Everything else in this repository is English; this is the one string set your end users actually read.
 
 ## Known gap
 

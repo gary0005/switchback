@@ -138,7 +138,7 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 ## Localisation
 
-Everything in this repository is English except the user-facing subscription page, which ships in two variants selected by `subscription_page_lang` (`en` by default). Add `roles/subscription/templates/index.<lang>.html.j2` for another language.
+Everything in this repository is English except the user-facing subscription page, which carries every language in `subscription_page_langs` at once and follows the reader's browser, with a switch on the page for overriding it. Add `roles/subscription/templates/index.<lang>.html.j2` for another language.
 
 ## Things that will break it
 

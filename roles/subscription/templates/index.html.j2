@@ -1,0 +1,91 @@
+{%- set token = ((vault_seed ~ ':sub:' ~ item['name'] ~ ':' ~ item['rot']) | hash('sha256'))[:32] -%}
+{%- set sub_url = 'https://' ~ subscription_domain ~ subscription_prefix ~ '/' ~ token -%}
+{#- Routes are counted, not named: the node names are internal, and a user's
+    page is the last place to describe the topology. -#}
+{%- set kinds = subscription_tier_kinds[item['tier']] -%}
+{%- set avail = subscription_chains | map(attribute='name')
+                | map('extract', subscription_chain_data)
+                | selectattr('kind', 'in', kinds) | list -%}
+{%- set n_multi = avail | selectattr('kind', 'eq', 'multi') | list | length -%}
+{%- set n_test = avail | selectattr('kind', 'eq', 'test') | list | length -%}
+{#- Every language ships in the one file and the reader switches between them,
+    rather than the language being fixed at deploy time. Nobody has to be told
+    which link is theirs, and the roster does not have to carry a language per
+    user. The cost is a few hundred bytes per language in a file that is
+    already tiny. index.<lang>.html.j2 holds the body for one language and
+    nothing else; the surrounding document lives here. -#}
+<!doctype html>
+<!-- {{ ansible_managed }} -->
+<html lang="{{ subscription_page_langs[0] }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subscription</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 3rem auto;
+         padding: 0 1.25rem; line-height: 1.6; color: #1a1a1a; }
+  code { background: #f3f3f1; padding: .15rem .35rem; border-radius: 4px;
+         word-break: break-all; font-size: .9em; }
+  .row { display: flex; gap: .5rem; align-items: center; margin: .4rem 0; }
+  button { border: 1px solid #ccc; background: #fff; border-radius: 6px;
+           padding: .3rem .7rem; cursor: pointer; font: inherit; }
+  small { color: #666; }
+  .langs { display: flex; gap: .25rem; justify-content: flex-end; }
+  .langs button { padding: .2rem .5rem; font-size: .85em; text-transform: uppercase; }
+  .langs button[aria-pressed="true"] { background: #1a1a1a; color: #fff;
+                                       border-color: #1a1a1a; }
+</style>
+</head>
+<body>
+{#- Shown even with one language configured: the buttons then read as a label
+    rather than a choice, and the page needs no conditional. -#}
+<nav class="langs">
+{% for lang in subscription_page_langs %}
+  <button type="button" data-set-lang="{{ lang }}"
+          aria-pressed="{{ 'true' if loop.first else 'false' }}">{{ lang }}</button>
+{% endfor %}
+</nav>
+{% for lang in subscription_page_langs %}
+<section class="lang" lang="{{ lang }}" data-lang="{{ lang }}"{{ '' if loop.first else ' hidden' }}>
+{% include 'index.' ~ lang ~ '.html.j2' %}
+</section>
+{% endfor %}
+
+<script>
+// The copy button reads the <code> beside it rather than an id, so every
+// language block carries its own without the ids colliding.
+function copy(btn) {
+  var code = btn.parentElement.querySelector('code');
+  navigator.clipboard.writeText(code.textContent.trim());
+}
+
+(function () {
+  var langs = {{ subscription_page_langs | to_json }};
+  var KEY = 'sub-lang';
+
+  function show(lang) {
+    document.querySelectorAll('section.lang').forEach(function (s) {
+      s.hidden = s.dataset.lang !== lang;
+    });
+    document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+      b.setAttribute('aria-pressed', b.dataset.setLang === lang ? 'true' : 'false');
+    });
+    document.documentElement.lang = lang;
+    // Private windows throw on storage; the page must still switch.
+    try { localStorage.setItem(KEY, lang); } catch (e) { /* not fatal */ }
+  }
+
+  var saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { /* not fatal */ }
+  var browser = (navigator.language || '').slice(0, 2);
+  show(langs.indexOf(saved) > -1 ? saved
+       : langs.indexOf(browser) > -1 ? browser
+       : langs[0]);
+
+  document.querySelectorAll('[data-set-lang]').forEach(function (b) {
+    b.addEventListener('click', function () { show(b.dataset.setLang); });
+  });
+})();
+</script>
+</body>
+</html>
