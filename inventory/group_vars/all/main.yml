@@ -30,6 +30,12 @@ vpn_chains:
   - { name: v1-v3, via: v1, exit: v3 }
   - { name: v3-v1, via: v3, exit: v1 }
   - { name: v3-v2, via: v3, exit: v2 }
+  # v2 as an entry as well. Whether a node is reachable depends on the network
+  # asking: v0 cannot reach v2 at all, while a client on a domestic ISP can —
+  # measured, both ways. A second entry that does not depend on v0 is worth
+  # having for exactly that reason.
+  - { name: v2-v3, via: v2, exit: v3 }
+  - { name: v2-v1, via: v2, exit: v1 }
   # One hop. Test chains: they prove a node's ingress works on its own, and
   # they are the only thing that isolates "the hop is broken" from "the node
   # is broken". v0-solo egresses inside the restricted network and is a
