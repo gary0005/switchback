@@ -11,8 +11,8 @@ argument_specs:
         chain it fronts, and the transit path of every chain it terminates.
         Both look identical in the configuration, because a request arriving
         from a peer node must not be distinguishable from a user's.
-      - Expects the acme role to have placed a certificate covering every one
-        of the node's domains, and the xray role to own the socket directory.
+      - Expects the acme role to have created the certificate symlink and the
+        challenge webroot, and the xray role to own the socket directory.
     options:
       angie_domains:
         description:
@@ -26,15 +26,20 @@ argument_specs:
         description: Angie configuration directory.
         type: str
         default: /etc/angie
-      angie_cert_name:
-        description:
-          - Certificate lineage name, matching acme_cert_name. Keyed by
-            inventory hostname so renaming a domain does not strand the old
-            lineage.
-        type: str
       angie_cert_dir:
-        description: Directory holding fullchain.pem and privkey.pem.
+        description:
+          - Directory holding fullchain.pem and privkey.pem. A symlink the acme
+            role maintains, not a lineage directly - it points at a self-signed
+            placeholder until http-01 succeeds, so this path is valid before any
+            certificate exists.
         type: str
+        default: /etc/ssl/switchback/current
+      angie_acme_webroot:
+        description:
+          - Directory http-01 challenge files are served from on port 80 ahead
+            of the redirect to HTTPS. Must match acme_webroot.
+        type: str
+        default: /var/www/acme
       angie_site_root:
         description:
           - Document root of the public site, matching website_root. A domain

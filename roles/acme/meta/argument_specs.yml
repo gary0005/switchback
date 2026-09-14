@@ -1,19 +1,22 @@
 ---
 argument_specs:
   main:
-    short_description: Issue a TLS certificate over dns-01.
+    short_description: Issue a TLS certificate over http-01.
     description:
-      - Installs certbot with a DNS plugin and issues one certificate covering
-        every name the node answers to.
-      - dns-01 rather than http-01 so the certificate is issued before the
-        domain takes any traffic, port 80 never has to be opened for a
-        challenge, and a name pointing at several nodes at once - a shared
-        apex - can still be validated on each of them.
+      - Installs certbot and issues one certificate covering every name the
+        node answers to, over http-01.
+      - http-01 rather than dns-01 so no DNS credential has to exist on the
+        node - a node that is broken into cannot then be used to take over the
+        zone. The cost is that every name must resolve to exactly one node,
+        because the challenge is answered by whichever node the name points at.
+      - Runs in two parts. main.yml installs certbot, opens the webroot and
+        writes a self-signed placeholder, because angie will not start without
+        a certificate and certbot cannot obtain one until angie answers on port
+        80. issue.yml runs after angie is up, obtains the certificate and moves
+        the symlink angie serves onto the new lineage.
       - Idempotency comes from comparing the names the lineage already covers
         against acme_domains, so adding an alias reissues the certificate
         instead of silently leaving the old one in place.
-      - Requires the vault variable used by the provider credentials template,
-        for example vault_cf_api_token for Cloudflare.
     options:
       acme_email:
         description:
@@ -36,26 +39,30 @@ argument_specs:
             hostname rather than by the first domain, so renaming a domain
             updates the existing lineage instead of stranding it.
         type: str
-      acme_dns_provider:
+      acme_webroot:
         description:
-          - certbot DNS plugin to use. Selects both the
-            python3-certbot-dns-<provider> package and the
-            templates/<provider>.ini.j2 credentials template, so adding a
-            provider means adding that template.
+          - Directory http-01 challenge files are written to and served from.
+            Must match angie_acme_webroot.
         type: str
-        default: cloudflare
+        default: /var/www/acme
+      acme_link_dir:
+        description:
+          - Directory holding the placeholder certificate and the `current`
+            symlink angie is pointed at. Must contain angie_cert_dir.
+        type: str
+        default: /etc/ssl/switchback
+      acme_bootstrap_days:
+        description: Validity of the self-signed placeholder, in days.
+        type: int
+        default: 3650
       acme_config_dir:
         description: certbot configuration directory.
         type: str
         default: /etc/letsencrypt
-      acme_propagation_seconds:
-        description: How long certbot waits for the DNS record to propagate.
-        type: int
-        default: 30
       acme_reload_service:
         description:
-          - Service the renewal deploy hook reloads once a new certificate
-            lands.
+          - Service reloaded when the symlink moves, and by the renewal deploy
+            hook once a new certificate lands.
         type: str
         default: angie
       acme_required_facts:

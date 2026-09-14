@@ -1,82 +1,72 @@
 ---
+# Everything needed for angie to start and to answer an http-01 challenge.
+# Obtaining the certificate happens in issue.yml, which has to run *after*
+# angie is up — see site.yml.
 - name: Ensure ansible_facts used by role
   ansible.builtin.setup:
     gather_subset: min
   when: not ansible_facts.keys() | list |
     intersect(acme_required_facts) == acme_required_facts
 
-# dns-01 rather than http-01: the certificate is issued before the domain
-# takes any traffic, and port 80 never has to be opened.
-- name: Install certbot with DNS plugin
+- name: Install certbot
   ansible.builtin.apt:
-    name:
-      - certbot
-      - "python3-certbot-dns-{{ acme_dns_provider }}"
+    name: certbot
     state: present
     update_cache: true
     cache_valid_time: 3600
 
-- name: Create certbot directories
+- name: Create the webroot and the certificate directories
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
+    owner: root
+    group: root
     mode: "0755"
   loop:
+    - "{{ acme_webroot }}"
+    - "{{ acme_link_dir }}"
+    - "{{ acme_link_dir }}/bootstrap"
     - "{{ acme_config_dir }}"
     - "{{ acme_config_dir }}/renewal-hooks/deploy"
 
-- name: Write DNS provider credentials
-  ansible.builtin.template:
-    src: "{{ acme_dns_provider }}.ini.j2"
-    dest: "{{ acme_config_dir }}/{{ acme_dns_provider }}.ini"
-    mode: "0600"
-    backup: true
-
-# What makes this idempotent is comparing the names the lineage already
-# covers, not the presence of a file. A `creates:` guard matches as soon as
-# any certificate exists, so adding an alias to acme_domains would silently do
-# nothing and angie would serve a certificate missing the new name.
-# Reads only, so it neither reports a change nor is skipped in check mode.
-- name: Read the names the current certificate covers
+# angie refuses to start without a certificate file, and certbot cannot get a
+# real one until angie answers on port 80. This placeholder breaks that circle.
+# It is replaced within the same run; nothing ever serves it to a user except
+# in the seconds between angie starting and the challenge succeeding.
+- name: Generate the placeholder certificate
   ansible.builtin.command:
     argv:
-      - certbot
-      - certificates
-      - --cert-name
-      - "{{ acme_cert_name }}"
-  register: __acme_existing
-  changed_when: false
-  failed_when: false
-  check_mode: false
+      - openssl
+      - req
+      - -x509
+      - -nodes
+      - -newkey
+      - rsa:2048
+      - -days
+      - "{{ acme_bootstrap_days | int }}"
+      - -keyout
+      - "{{ acme_link_dir }}/bootstrap/privkey.pem"
+      - -out
+      - "{{ acme_link_dir }}/bootstrap/fullchain.pem"
+      - -subj
+      - "/CN={{ acme_domains[0] }}"
+      - -addext
+      - "subjectAltName={{ acme_domains | map('regex_replace', '^', 'DNS:') | join(',') }}"
+    creates: "{{ acme_link_dir }}/bootstrap/fullchain.pem"
 
-- name: Request or extend the certificate
-  ansible.builtin.command:
-    argv: "{{ __acme_argv }}"
-  vars:
-    __acme_covered: >-
-      {{ (__acme_existing.stdout | default('')
-          | regex_search('Domains:\s*(.+)', '\1')
-          | default([], true) | join(' ')).split() }}
-    __acme_argv: >-
-      {%- set argv = [
-            'certbot', 'certonly', '--non-interactive', '--agree-tos',
-            '--expand', '--cert-name', acme_cert_name, '-m', acme_email,
-            '--dns-' ~ acme_dns_provider,
-            '--dns-' ~ acme_dns_provider ~ '-credentials',
-            acme_config_dir ~ '/' ~ acme_dns_provider ~ '.ini',
-            '--dns-' ~ acme_dns_provider ~ '-propagation-seconds',
-            acme_propagation_seconds | string,
-          ] -%}
-      {%- for d in acme_domains -%}
-      {%-   set _ = argv.extend(['-d', d]) -%}
-      {%- endfor -%}
-      {{ argv }}
-  when: __acme_covered | symmetric_difference(acme_domains) | length > 0
-  changed_when: true
+- name: Restrict the placeholder private key
+  ansible.builtin.file:
+    path: "{{ acme_link_dir }}/bootstrap/privkey.pem"
+    owner: root
+    group: root
+    mode: "0600"
 
-- name: Install renewal deploy hook
+- name: Install the renewal deploy hook
   ansible.builtin.template:
     src: reload-service.sh.j2
     dest: "{{ acme_config_dir }}/renewal-hooks/deploy/reload-{{ acme_reload_service }}.sh"
     mode: "0755"
     backup: true
+
+- name: Point angie at the real lineage if there is one, the placeholder if not
+  ansible.builtin.include_tasks: link.yml

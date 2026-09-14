@@ -4,6 +4,8 @@
 # and `--tags verify` is what settles whether it actually works.
 ansible_host: 203.0.113.12
 
+# Names angie terminates TLS for, and that the certificate covers. The apex is
+# not here: it resolves to one node only, because http-01 is answered by
+# whichever node the name points at. See inventory/host_vars/v3.
 vpn_domains:
   - v2.example.com
-  - example.com

@@ -1,0 +1,44 @@
+---
+# Points `current` at the real lineage once it exists, and at the placeholder
+# until then. Included from both main.yml (before angie starts) and issue.yml
+# (after a certificate is obtained), so the decision is made in one place.
+- name: Check whether a real certificate exists
+  ansible.builtin.stat:
+    path: "{{ acme_config_dir }}/live/{{ acme_cert_name }}/fullchain.pem"
+  register: __acme_live
+  check_mode: false
+
+- name: Point angie at the certificate it should serve
+  ansible.builtin.file:
+    src: >-
+      {{ acme_config_dir ~ '/live/' ~ acme_cert_name
+         if __acme_live.stat.exists
+         else acme_link_dir ~ '/bootstrap' }}
+    dest: "{{ acme_link_dir }}/current"
+    state: link
+    # The link is replaced in place when the lineage appears, and its target
+    # does not exist yet the first time this runs.
+    force: true
+    follow: false
+  register: __acme_link
+
+- name: Collect the state of installed services
+  ansible.builtin.service_facts:
+  check_mode: false
+
+# A direct reload rather than a handler: handlers fire at the end of the play,
+# and by then the roles after this one have already been told the certificate
+# is in place. On the first run there is nothing to reload — angie is not
+# installed yet, which is what the state check covers.
+- name: Reload angie onto the new certificate
+  ansible.builtin.service:
+    name: "{{ acme_reload_service }}"
+    state: reloaded
+  when:
+    - __acme_link is changed
+    - __acme_service_state == 'running'
+    - not ansible_check_mode
+  vars:
+    __acme_service_state: >-
+      {{ ansible_facts.services[acme_reload_service ~ '.service']['state']
+         | default('absent') }}

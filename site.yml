@@ -30,7 +30,10 @@
         name: common
       tags: [common]
 
-    - name: Issue TLS certificates
+    # Installs certbot, opens the webroot and puts a self-signed placeholder
+    # where angie expects a certificate. The real one cannot be obtained yet:
+    # http-01 is answered by angie, which is not running.
+    - name: Prepare for certificate issue
       ansible.builtin.import_role:
         name: acme
       tags: [acme, certs]
@@ -62,6 +65,19 @@
       ansible.builtin.import_role:
         name: firewall
       tags: [firewall]
+
+    # angie has to be listening before the challenge can be answered, and its
+    # config only reaches the running process when the handlers fire.
+    - name: Apply pending restarts and reloads
+      ansible.builtin.meta: flush_handlers
+
+    # Now that port 80 answers, ask for the real certificate and move the
+    # symlink angie serves from the placeholder onto the new lineage.
+    - name: Issue TLS certificates
+      ansible.builtin.import_role:
+        name: acme
+        tasks_from: issue
+      tags: [acme, certs]
 
 # A separate play so the handlers of the one above have already run. Within a
 # play, handlers fire at the end — checking before that would test the

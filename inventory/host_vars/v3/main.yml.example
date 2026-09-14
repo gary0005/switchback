@@ -2,6 +2,16 @@
 # Offshore node that both fronts chains and egresses on them.
 ansible_host: 203.0.113.13
 
+# Names angie terminates TLS for, and that the certificate covers. The first is
+# this node's primary: chains and subscription links address it by that name.
+#
+# The apex lives on exactly one node. Certificates are issued over http-01, and
+# that challenge is answered by whichever node the name resolves to — so a name
+# pointing at several nodes would validate on one of them at random. See the
+# acme role.
+#
+# Read across plays through hostvars, so it belongs in the inventory rather
+# than in a role's defaults.
 vpn_domains:
   - v3.example.com
   - example.com

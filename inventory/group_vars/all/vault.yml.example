@@ -5,5 +5,5 @@
 # Generate with: openssl rand -hex 32
 vault_seed: "REPLACE_ME_openssl_rand_hex_32"
 
-# Cloudflare API token with Zone:DNS:Edit on the relevant zone (for dns-01)
-vault_cf_api_token: "REPLACE_ME"
+# Nothing else belongs here. Certificates are issued over http-01, so no DNS
+# credential ever reaches a node — see roles/acme/README.md.

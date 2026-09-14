@@ -3,7 +3,7 @@ galaxy_info:
   role_name: acme
   namespace: switchback
   author: gary0005
-  description: Let's Encrypt certificates over the dns-01 challenge, via certbot.
+  description: Let's Encrypt certificates over the http-01 challenge, via certbot.
   license: MIT
   min_ansible_version: "2.16"
   platforms:
