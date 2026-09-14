@@ -42,10 +42,10 @@ Then edit all four `inventory/host_vars/*/main.yml` files. Each needs the node's
 ansible_host: 198.51.100.7
 vpn_domains:
   - v0.example.com      # primary: chains and subscription links use this
-  - example.com         # alias, on one node only — see below
+  - example.com         # alias: the apex, shared with the other nodes
 ```
 
-The first domain is the node's primary. The rest are aliases and go into the same certificate. Put the apex on exactly one node: certificates come over http-01, which is answered by whichever node the name resolves to, so a name pointing at several nodes renews by luck.
+The first domain is the node's primary — the name chains and subscription links address it by, so it must reach that node and no other. The rest are aliases and go into the same certificate. The apex can sit on several nodes at once, because dns-01 proves ownership by writing a TXT record rather than by being the node the name resolves to.
 
 **Chains and users** live in [`inventory/group_vars/all/main.yml`](../inventory/group_vars/all/main.yml). The chain list is already written; what you need to set is the roster:
 
@@ -60,7 +60,7 @@ vpn_users:
 
 **`name` is a label, not a person.** It derives the user's UUID and subscription token and tags them in xray's config — which means it is written in clear text onto every node, so real names do not belong here and the vault would not help. Keep who-is-who wherever you keep the vault password. And pick a label once: renaming it reissues that user's access, exactly as bumping `rot` does.
 
-The address Let's Encrypt sends expiry notices to is not here — it goes in the vault, in the next step but one. This file is committed, and a plain-text address in a repository is an address that gets scraped.
+The address Let's Encrypt notifies, the DNS zone and its API credentials are not here — they go in the vault, in the next step but one. This file is committed, and neither a personal address nor a zone-wide API key belongs in it.
 
 **Membership** is in [`inventory/hosts.yml`](../inventory/hosts.yml). A node listed under `unmanaged` is skipped by every play — that is how a node already carrying live traffic stays untouched while its peers still read its domain out of the inventory.
 
@@ -96,7 +96,7 @@ The vault is an encrypted YAML file that Ansible decrypts in memory for the leng
 openssl rand -hex 32                       # this is your vault_seed
 
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
-$EDITOR /tmp/vault.yml                     # the seed and your email address
+$EDITOR /tmp/vault.yml                     # seed, email, zone, API key and secret
 uv run ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
 shred -u /tmp/vault.yml                    # rm -P on macOS
 ```
@@ -105,15 +105,17 @@ shred -u /tmp/vault.yml                    # rm -P on macOS
 
 To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
 
-Two values go in, and only two. `vault_seed`, which everything derives from, and `vault_acme_email`, which is where Let's Encrypt sends expiry notices — not a secret, but personal data that has no business sitting in a committed file. There is no DNS credential: certificates come over http-01, where a node proves it owns a name by answering on its own port 80, so a node that gets broken into cannot be used to take over the domain.
+Four values go in. `vault_seed`, which everything derives from. `vault_acme_email`, where expiry notices go — not a secret, but personal data with no business in a committed file. And `vault_dns_zone` with `vault_spaceship_api_key` and `vault_spaceship_api_secret`: certificates come over dns-01, so each node writes its own challenge record into the zone.
+
+**Create the API key in Spaceship's API Manager**, and scope it to DNS writes and nothing else. This is the sharpest thing in the deployment: every node holds it, and a node that is broken into can issue a certificate for any name in the domain. That is the price of the shared apex — see [roles/acme/README.md](../roles/acme/README.md).
 
 ## 5. DNS
 
 Records are maintained by hand, wherever your domain's nameservers point. There is no Terraform: the records change when you add a node or move a provider, which is rare enough that automating it costs more than it saves. `--tags verify` is what notices if they drift.
 
-**One A record per name in `vpn_domains`, and each name points at exactly one node.** That constraint comes from http-01: Let's Encrypt asks whichever address the name resolves to, and only one node holds the challenge file. A name pointing at two nodes renews successfully about half the time — and you find out sixty days later.
+One A record per name in `vpn_domains`. Per-node names point at one node each; **the apex may point at several at once** — visitors round-robin between them, and every one of those nodes serves the same site. That works because dns-01 proves ownership by writing a TXT record rather than by being the node a name resolves to.
 
-So for four nodes plus an apex on one of them:
+So for four nodes with three of them sharing the apex:
 
 | Name | Points at |
 |---|---|
@@ -121,16 +123,14 @@ So for four nodes plus an apex on one of them:
 | `v1.example.com` | v1 |
 | `v2.example.com` | v2 |
 | `v3.example.com` | v3 |
-| `example.com` | v3 only |
+| `example.com` | v0, v2 and v3 |
 
-Records must resolve **before** the first run — certificates cannot be issued until they do:
+Records must resolve **before** the first run — certificates cannot be issued until the zone is right, and the challenge is written into that same zone:
 
 ```bash
 for n in v0 v1 v2 v3; do echo "$n: $(dig +short A $n.example.com)"; done
-dig +short A example.com        # exactly one address
+dig +short A example.com
 ```
-
-If the apex already points at several nodes from an earlier setup, remove the extra records now. That is the one mistake this design cannot absorb.
 
 ## 6. First run, one node at a time
 
@@ -142,7 +142,7 @@ uv run ansible-playbook site.yml --limit v3 --skip-tags verify --ask-vault-pass
 
 `--limit` restricts the run to one node. `--skip-tags verify` leaves the checks out: this node's two-hop chains point at nodes that do not exist yet, and the check would correctly fail on them.
 
-Expect a few minutes. Watch for what certbot does around the middle of the run: angie comes up on a self-signed placeholder, certbot answers the challenge on port 80, and the symlink angie serves moves onto the real certificate. Only the first run does this; afterwards the lineage is already there. Then look at it yourself:
+Expect a few minutes, most of it certbot. For each name it writes a TXT record through the Spaceship API, waits until a public resolver can see it, then asks Let's Encrypt to check — so a slow zone shows up as the run sitting quietly on the certificate task. If it gives up, raise `acme_dns_check_tries`. Then look at it yourself:
 
 ```bash
 curl -I https://v3.example.com

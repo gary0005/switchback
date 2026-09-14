@@ -33,7 +33,7 @@ Adding a node is one entry in `hosts.yml`, one `host_vars` file, and the chains 
 
 **Tiers are enforced server side.** A user whose tier excludes single-hop chains does not merely lack those links; their UUID is absent from those inbounds.
 
-**No DNS credential reaches a node.** Certificates come over http-01, so a node proves it owns a name by answering on its own port 80 — there is no zone API key to steal from a compromised server. The price is that every name resolves to exactly one node, which is why the apex sits on a single node rather than round-robining.
+**Certificates come over dns-01.** A node proves it owns a name by writing a TXT record through the registrar's API, not by being the one the name resolves to — so the apex can point at several nodes at once, and a certificate is issued before the domain takes any traffic. The price is a credential on every node that can write to the zone; it is the largest single risk here, and the [acme role](roles/acme/README.md) says why it was accepted.
 
 **Unmanaged nodes are excluded structurally.** A node in the `unmanaged` group is skipped by every play — it carries live traffic under someone else's configuration. Its peers still read its domain and paths out of the inventory, and chains touching it stay out of subscriptions until it is taken over, because nothing is listening at the far end yet.
 
@@ -45,7 +45,7 @@ inventory/
 ├── group_vars/all/
 │   ├── ansible.yml              connection settings
 │   ├── main.yml                 chains, seed-derived data, users, settings
-│   └── vault.yml                encrypted; vault_seed and the notification address
+│   └── vault.yml                encrypted; seed, notification address, DNS API credentials
 └── host_vars/<host>/
     ├── main.yml.example         committed; placeholder addresses and domains
     └── main.yml                 gitignored; the real ansible_host and vpn_domains
@@ -81,8 +81,8 @@ $EDITOR inventory/host_vars/*/main.yml      # ansible_host, vpn_domains
 $EDITOR inventory/hosts.yml                 # membership, and what is unmanaged
 $EDITOR inventory/group_vars/all/main.yml   # vpn_chains, vpn_users
 
-# 2. Create the vault: the seed, and the address Let's Encrypt notifies
-#    (vault_seed = openssl rand -hex 32)
+# 2. Create the vault: the seed, the notification address, and the DNS API
+#    credentials certificates are issued with (vault_seed = openssl rand -hex 32)
 cp inventory/group_vars/all/vault.yml.example /tmp/vault.yml
 $EDITOR /tmp/vault.yml
 ansible-vault encrypt --output inventory/group_vars/all/vault.yml /tmp/vault.yml
@@ -93,9 +93,9 @@ shred -u /tmp/vault.yml
 #    nothing for a connection made to an address.
 ssh-keyscan -T 10 -H 203.0.113.10 >> ~/.ssh/known_hosts
 
-# 4. DNS, by hand at the registrar. One A record per name in vpn_domains,
-#    each pointing at exactly one node — http-01 is answered by whichever
-#    node a name resolves to. They must resolve before the first run.
+# 4. DNS, by hand at the registrar. One A record per name in vpn_domains;
+#    the apex may point at several nodes at once. They must resolve before
+#    the first run.
 dig +short v0.example.com
 
 # 5. Deploy
@@ -132,7 +132,9 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 **Never commit an unencrypted vault.** A pre-commit hook refuses any `vault.yml` that does not start with `$ANSIBLE_VAULT`, and `detect-secrets` and `gitleaks` run beside it; the same checks run in CI.
 
-**The vault holds two values.** `vault_seed`, which everything derives from, and `vault_acme_email`. The address is not a secret, but it is personal data, and a plain-text address in a repository is an address that gets scraped. Certificates need no credential at all — see the [acme role](roles/acme/README.md).
+**The DNS credential is the sharpest thing here.** Every node holds a key that can write to the zone, because that is how dns-01 is answered. A node that is broken into can issue a certificate for any name in the domain. Scope the key to DNS writes alone, and rotate it if a node is ever lost.
+
+**The vault holds four values:** `vault_seed`, which everything derives from; `vault_acme_email`, personal data rather than a secret; and the zone name with its API key and secret.
 
 **Domains are not secrets, but they are not public either.** Everything committed here uses `example.com` and RFC 5737 addresses: real addresses and domains live in `host_vars/<host>/main.yml`, which is gitignored, next to the committed `main.yml.example`. Back those files up somewhere — they are not in the repository, and losing them means reconstructing the inventory by hand.
 
@@ -154,9 +156,7 @@ Everything in this repository is English except the user-facing subscription pag
 
 **Clock accuracy.** VLESS depends on it; a couple of minutes of drift breaks the handshake. `chrony` is installed by the `common` role for that reason, not for tidiness.
 
-**A name resolving to two nodes.** http-01 is answered by whichever node the name points at, and only one of them holds the challenge file, so renewal starts failing at random sixty days later. `--tags verify` asserts this.
-
-**Port 80 closed.** It is what renewal runs on. Closing it breaks certificates two months after the fact.
+**A challenge record that never propagates.** The acme hook polls until its TXT is visible and fails if it is not, rather than letting Let's Encrypt look too early and spending a rate-limit slot. If a zone is slow, raise `acme_dns_check_tries`.
 
 **A non-empty document root.** The site under `/var/www/site` is not a decoration — a domain serving nothing at `/` fails the first active probe.
 
@@ -183,6 +183,7 @@ There is no Molecule coverage yet. See "Known gaps".
 * The `website` role adds and updates files but does not prune ones deleted from the source.
 * No monitoring beyond `--tags verify` on demand. Angie can expose `/status` as JSON — worth wiring up a node_exporter and an alert on certificate expiry.
 * DNS is not code. `--tags verify` catches a record that disagrees with the inventory, but nothing creates the records for you.
+* Concurrent issuing across nodes sharing the apex is expected to work but has not been exercised on a slow zone; if it turns flaky, issue with `--limit`.
 * The live check leans on an external echo service (`verify_echo_url`) to learn the egress address.
 
 ## License
