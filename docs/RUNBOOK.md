@@ -142,12 +142,39 @@ terraform apply
 cd ..
 ```
 
+**One record per name a node answers to**, which means `records` here has to
+mirror `vpn_domains` across all the `host_vars` files. Nothing checks that for
+you: get it wrong and the symptom is certbot failing on a name that does not
+resolve, or a browser complaining about a certificate that does not cover the
+name it was given.
+
+A node that does not carry the apex in its `vpn_domains` must not appear among
+the apex records either. Apex records are a round robin — a third of visitors
+would land on a node with no certificate for that name and no site behind it.
+That is why an unmanaged node usually has one record and not two.
+
 Records must resolve **before** the first run — certificates cannot be issued
 until they do:
 
 ```bash
 dig +short v0.example.com
 ```
+
+### If a record already exists
+
+Terraform assumes it created everything in `records`. A name that is already in
+the zone — likely for any node that was doing something before this repository
+existed — makes `apply` fail with "record already exists", and it fails the
+whole plan, not just that record. Import it into state first:
+
+```bash
+terraform import \
+  'cloudflare_dns_record.node["v1.example.com|203.0.113.11"]' \
+  <zone_id>/<record_id>
+```
+
+The key in brackets is `name|content`, exactly as the `for_each` builds it.
+`record_id` comes from the Cloudflare dashboard or its API.
 
 ## 6. First run, one node at a time
 
@@ -214,16 +241,30 @@ where assumptions about which nodes can reach which get settled by measurement.
 
 A node in the `unmanaged` group is skipped, and chains touching it are kept out
 of subscriptions — nothing is listening at the far end, so publishing them would
-hand users links that cannot work. When you can reconfigure it:
+hand users links that cannot work. The chains themselves are declared all along;
+only the far end is missing.
+
+**Taking one over is destructive to whatever it was doing.** The first run
+overwrites `/etc/angie/`, replaces `/usr/local/etc/xray/config.json`, and
+applies an nftables ruleset that flushes what was there and leaves only 22, 80
+and 443 open. Anything the node was serving on another port, or under another
+configuration, stops at that moment, and its existing users need new
+subscriptions issued from here. Plan the changeover before you start it.
+
+When you are ready:
 
 ```bash
-$EDITOR inventory/hosts.yml                                # remove it from `unmanaged`
-uv run ansible-playbook site.yml --limit v1 --ask-vault-pass
+$EDITOR inventory/hosts.yml                  # remove it from `unmanaged`
+$EDITOR inventory/group_vars/all/main.yml    # add its test chain, e.g. v1-solo
+uv run ansible-playbook site.yml --limit v1 --skip-tags verify --ask-vault-pass
 uv run ansible-playbook site.yml --tags users --ask-vault-pass
+uv run ansible-playbook site.yml --tags verify --ask-vault-pass
 ```
 
-The second command is what puts the newly usable chains into everyone's
-subscription.
+The `users` run is what puts the newly usable chains into everyone's
+subscription; the `verify` run is what confirms they carry traffic. If the node
+should also serve the shared apex, add it to that node's `vpn_domains` and add
+the matching DNS record before the first command.
 
 ## 9. Hand out subscriptions
 

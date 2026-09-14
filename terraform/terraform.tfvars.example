@@ -1,9 +1,18 @@
 cf_api_token = "REPLACE_ME"
 cf_zone_id   = "REPLACE_ME"
 
-# One entry per name a node answers to. The per-node names are what chains and
-# subscriptions address; the repeated apex is the shared site, round-robined
-# across the nodes that serve it.
+# One entry per name a node answers to, so this list mirrors `vpn_domains`
+# across the host_vars files. Nothing checks that for you: a name missing here
+# fails certbot, and a name here that no node claims points at nothing.
+#
+# Per-node names are what chains and subscriptions address, so each resolves to
+# exactly one node. The repeated apex is the shared site — several records under
+# one name, which clients round-robin between.
+#
+# A node appears among the apex records only if it carries the apex in its own
+# vpn_domains. v1 below has one record and not two because it is unmanaged: it
+# has no certificate for the apex and no site behind it, so a third of visitors
+# would land on a TLS error.
 records = [
   { name = "v0.example.com", content = "203.0.113.10" },
   { name = "v1.example.com", content = "203.0.113.11" },
