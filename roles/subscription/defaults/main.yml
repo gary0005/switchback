@@ -26,14 +26,17 @@ subscription_chains: "{{ vpn_chains_ready }}"
 subscription_chain_data: "{{ vpn_chain_data }}"
 
 # Each chain is published twice, once per ALPN, h2 first because h2 is the one
-# to use. Measured from a consumer connection in Russia, the same route came in
-# at 88 Mbit over h2 and 20 over h3, and on a weaker link h3 degrades from slow
-# to dropping the connection — UDP/443 is throttled rather than blocked, so the
-# route passes a latency test and only then crawls.
+# to use. Measured from a consumer connection in Russia, h3 costs nothing on
+# many parallel connections — a speedtest saturated the line either way — but
+# collapses on a single sustained stream: one 300 MB download came in at 88
+# Mbit over h2 and 20 over h3. Reports from a weaker link have it dropping the
+# connection outright. UDP/443 looks to be throttled per flow rather than
+# blocked, which is why a latency test says nothing and a route can pass every
+# check and still disappoint.
 #
-# h3 stays published anyway: the throttling belongs to the network the client
-# sits on, not to this deployment, and a user elsewhere may well be better off
-# on it. The user-facing page says which to reach for.
+# h3 stays published: the throttling belongs to the network the client sits on,
+# not to this deployment, and a user elsewhere may well be better off on it.
+# The user-facing page says which to reach for.
 subscription_alpns:
   - h2
   - h3
