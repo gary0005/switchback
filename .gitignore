@@ -3,6 +3,12 @@
 *.retry
 .venv/
 __pycache__/
+# Collections installed from requirements.yml; pinned there, not vendored.
+.ansible/
 terraform/.terraform/
 terraform/*.tfstate*
 terraform/terraform.tfvars
+inventory/host_vars/v0/main.yml
+inventory/host_vars/v1/main.yml
+inventory/host_vars/v2/main.yml
+inventory/host_vars/v3/main.yml
