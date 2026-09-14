@@ -51,11 +51,14 @@ The first domain is the node's primary. The rest are aliases and go into the sam
 
 ```yaml
 vpn_users:
-  - { name: boss, tier: all, rot: 1 }     # single-hop test chains as well
-  - { name: alice, tier: main, rot: 1 }   # two-hop chains only
+  - { name: ops, tier: all, rot: 1 }      # whoever debugs the deployment
+  - { name: lead, tier: all, rot: 1 }     # single-hop test chains as well
+  - { name: u-a, tier: main, rot: 1 }     # two-hop chains only
 ```
 
 `rot` is a rotation counter. Bumping one user's `rot` reissues their UUID and their link; nobody else is affected.
+
+**`name` is a label, not a person.** It derives the user's UUID and subscription token and tags them in xray's config — which means it is written in clear text onto every node, so real names do not belong here and the vault would not help. Keep who-is-who wherever you keep the vault password. And pick a label once: renaming it reissues that user's access, exactly as bumping `rot` does.
 
 The address Let's Encrypt sends expiry notices to is not here — it goes in the vault, in the next step but one. This file is committed, and a plain-text address in a repository is an address that gets scraped.
 
