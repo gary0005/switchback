@@ -22,8 +22,15 @@ subscription_show_links: false
 subscription_chains: "{{ vpn_chains_ready }}"
 subscription_chain_data: "{{ vpn_chain_data }}"
 
-# Each chain is published twice, once per ALPN: h3 is faster on a lossy link,
-# h2 survives where UDP is throttled, and clients pick per attempt.
+# Each chain is published twice, once per ALPN, h2 first because h2 is the one
+# to use. Measured from a consumer connection in Russia, the same route came in
+# at 88 Mbit over h2 and 20 over h3, and on a weaker link h3 degrades from slow
+# to dropping the connection — UDP/443 is throttled rather than blocked, so the
+# route passes a latency test and only then crawls.
+#
+# h3 stays published anyway: the throttling belongs to the network the client
+# sits on, not to this deployment, and a user elsewhere may well be better off
+# on it. The user-facing page says which to reach for.
 subscription_alpns:
   - h2
   - h3

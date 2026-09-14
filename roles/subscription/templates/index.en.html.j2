@@ -50,8 +50,10 @@
   <li><b>{{ n_test }} single-hop route{{ 's' if n_test > 1 else '' }}</b> — for
       testing only: the exit address is the entry address.</li>
 {% endif %}
-  <li>Every route ships in two flavours: <b>h2</b> and <b>h3</b>. h3 is faster on
-      a poor connection, h2 is more reliable where UDP is throttled.</li>
+  <li>Every route ships twice, as <b>h2</b> and <b>h3</b>. <b>Take the h2 one.</b>
+      h3 rides UDP, which most networks here throttle — it connects, then runs
+      several times slower, and on a weak link it stops holding at all. Try h3
+      only if h2 disappoints you.</li>
 </ul>
 
 <script>
