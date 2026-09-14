@@ -20,12 +20,15 @@ repos:
       - id: yamllint
         args: [--strict]
 
+  # Kept in step with ansible-core: ansible-lint reaches into core internals,
+  # and a version older than the core it runs against fails on import rather
+  # than on a rule.
   - repo: https://github.com/ansible/ansible-lint
-    rev: v25.1.2
+    rev: v26.8.0
     hooks:
       - id: ansible-lint
         additional_dependencies:
-          - ansible-core>=2.16
+          - ansible-core>=2.21
 
   # The whole deployment derives from one vault_seed: a single plaintext leak
   # compromises every path, port, UUID and subscription token at once.
