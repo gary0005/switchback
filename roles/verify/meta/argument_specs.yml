@@ -1,0 +1,100 @@
+---
+argument_specs:
+  main:
+    short_description: Check that the node is shaped correctly and its chains work.
+    description:
+      - Runs two kinds of check. The structural ones assert that xray holds no
+        network listener, that only the expected ports are reachable, and that
+        the firewall still drops by default - the properties that keep traffic
+        from reaching xray without passing through angie.
+      - The live ones dial each chain the node fronts with a throwaway client
+        built exactly like a user's, and compare the address the request came
+        out at against the chain's exit node. Everything else can pass on a
+        deployment that does not carry a single byte; this cannot.
+      - Live checks are skipped under --check, which cannot run a client.
+    options:
+      verify_expected_ports:
+        description:
+          - The complete set of ports any node may expose. Anything else
+            reachable from the network is a finding.
+        type: list
+        elements: int
+        default: [22, 80, 443]
+      verify_allowed_listeners:
+        description:
+          - Process names permitted to hold a listening socket. xray is
+            deliberately absent - all of its inbounds are unix sockets.
+        type: list
+        elements: str
+      verify_live:
+        description:
+          - Whether to dial the chains. Turn it off to run the structural
+            checks alone, for instance on a node whose peers are down.
+        type: bool
+        default: true
+      verify_echo_url:
+        description:
+          - Service echoing the caller's address back as plain text. Reached
+            through the chain, so it also proves egress works.
+        type: str
+        default: https://api.ipify.org
+      verify_probe_port:
+        description: Loopback port the throwaway client listens on.
+        type: int
+        default: 10808
+      verify_probe_dir:
+        description:
+          - Root-owned scratch space for probe configs, removed when the
+            checks finish. Not /tmp, which is world-writable, since these
+            files carry a working credential.
+        type: str
+        default: /var/cache/xray-probe
+      verify_probe_startup:
+        description: Seconds to wait for the throwaway client to come up.
+        type: int
+        default: 10
+      verify_probe_timeout:
+        description:
+          - Seconds allowed for the request itself. A two-hop chain crosses
+            two TLS handshakes before the first byte.
+        type: int
+        default: 25
+      verify_chains:
+        description:
+          - Chains to check - normally vpn_chains_ready. A chain ending on an
+            unmanaged node has nothing listening, and failing on it would
+            report a deliberate gap as a fault.
+        type: list
+        elements: dict
+      verify_chain_data:
+        description:
+          - Per-chain derived values keyed by chain name. Computed in the
+            inventory.
+        type: dict
+      verify_socket_dir:
+        description: Unix socket directory shared between xray and angie.
+        type: str
+      verify_domain:
+        description: Name the probe dials, which is this node's primary.
+        type: str
+      verify_probe_uuid:
+        description:
+          - Credential the probe presents. Present in every user-facing
+            inbound, so the check exercises the path users take.
+        type: str
+      verify_xray_bin:
+        description: xray binary used to run the throwaway client.
+        type: str
+        default: /usr/local/bin/xray
+      verify_transit_alpn:
+        description:
+          - ALPN the probe offers. Must agree with the xray role, or the check
+            exercises a different path than the one users take.
+        type: list
+        elements: str
+        default:
+          - h2
+      verify_transit_fingerprint:
+        description: uTLS fingerprint the probe presents.
+        type: str
+        default: chrome

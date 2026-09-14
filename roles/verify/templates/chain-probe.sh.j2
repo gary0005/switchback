@@ -1,0 +1,29 @@
+#!/bin/bash
+{{ ansible_managed | comment }}
+# Runs one chain check: start a throwaway client against the config given as
+# $1, wait for its loopback port, ask an echo service where the request came
+# from, print that address, and take the client down again. Prints nothing but
+# the address on success, so the caller can compare it directly.
+set -euo pipefail
+
+config="${1:?usage: $0 <probe-config.json>}"
+port="{{ verify_probe_port | int }}"
+
+"{{ verify_xray_bin }}" run -c "$config" >/dev/null 2>&1 &
+probe_pid=$!
+# The client holds a working credential; it must not outlive this script even
+# if curl dies or the caller times out.
+trap 'kill "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true' EXIT
+
+for _ in $(seq 1 "{{ verify_probe_startup | int }}"); do
+    if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+        exec 3>&- 2>/dev/null || true
+        break
+    fi
+    sleep 1
+done
+
+curl --silent --show-error --fail \
+     --max-time "{{ verify_probe_timeout | int }}" \
+     --socks5-hostname "127.0.0.1:$port" \
+     "{{ verify_echo_url }}"

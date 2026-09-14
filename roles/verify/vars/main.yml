@@ -1,0 +1,37 @@
+---
+# Internal to the role: computed from its inputs, not part of its interface.
+
+# Every socket angie proxies to on this node — the user-facing path of each
+# chain it fronts, and the transit path of each chain it terminates. Kept in
+# step with the angie template by construction, since both derive the names
+# the same way from the same chain list.
+__verify_expected_sockets: >-
+  {%- set out = [] -%}
+  {%- for c in verify_chains if c.via == inventory_hostname -%}
+  {%-   set _ = out.append(verify_socket_dir ~ '/' ~ c.name ~ '-in.sock') -%}
+  {%- endfor -%}
+  {%- for c in verify_chains if c.exit == inventory_hostname and c.via != inventory_hostname -%}
+  {%-   set _ = out.append(verify_socket_dir ~ '/' ~ c.name ~ '-transit.sock') -%}
+  {%- endfor -%}
+  {{ out }}
+
+# Chains dialled from this node. A chain is checked where it is entered,
+# because that is the only place the whole route exists end to end.
+__verify_live_chains: >-
+  {{ verify_chains | selectattr('via', 'eq', inventory_hostname)
+     | map(attribute='name') | list }}
+
+# A chain fails if it did not answer at all, or answered from an address that
+# is not its exit node's. The second case is the interesting one: it means the
+# traffic went out somewhere other than where the user was promised.
+__verify_failed_chains: >-
+  {%- set out = [] -%}
+  {%- for r in __verify_probes.results -%}
+  {%-   set seen = r.stdout | default('') | trim -%}
+  {%-   set want = hostvars[verify_chain_data[r.item]['exit']]['vpn_egress_ip'] -%}
+  {%-   if r.rc != 0 or seen != want -%}
+  {%-     set _ = out.append(r.item ~ ' came out at ' ~ (seen | default('nothing', true))
+                             ~ ', expected ' ~ want) -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ out }}

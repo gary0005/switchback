@@ -1,0 +1,22 @@
+---
+galaxy_info:
+  role_name: verify
+  namespace: switchback
+  author: gary0005
+  description: Assert the node exposes only angie, and that every chain exits where it should.
+  license: MIT
+  min_ansible_version: "2.16"
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy
+        - noble
+  galaxy_tags:
+    - networking
+    - testing
+
+dependencies: []

@@ -1,0 +1,179 @@
+---
+# ---------------------------------------------------------------------------
+# Structural checks — what the node exposes
+# ---------------------------------------------------------------------------
+# These do not ask whether the deployment works. They ask whether it is still
+# shaped the way it has to be: one listener on the network, and it is angie.
+# A direct route to xray gets found and blocked quickly, and it is exactly the
+# kind of thing a well-meaning edit adds back without anyone noticing.
+
+- name: Read listening sockets and their owners
+  ansible.builtin.command: ss -H -ltunp
+  register: __verify_listeners
+  changed_when: false
+  check_mode: false
+
+- name: Assert xray holds no network listener
+  ansible.builtin.assert:
+    that: __verify_xray_bound | length == 0
+    fail_msg: >-
+      xray is listening on the network: {{ __verify_xray_bound | join('; ') }}.
+      Every inbound must be a unix socket — a bound port means traffic can
+      reach xray without passing through angie, which is the one thing this
+      deployment is built to prevent.
+    success_msg: xray binds no TCP or UDP port.
+    quiet: true
+  vars:
+    __verify_xray_bound: >-
+      {{ __verify_listeners.stdout_lines | default([]) | select('search', '"xray"') | list }}
+
+- name: Read publicly bound ports
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -o pipefail
+      ss -H -ltun \
+        | awk '$5 !~ /^(127\.|\[::1\])/ { n = split($5, a, ":"); print a[n] }' \
+        | sort -un
+  register: __verify_ports
+  changed_when: false
+  check_mode: false
+
+- name: Assert nothing unexpected is reachable from the network
+  ansible.builtin.assert:
+    that: __verify_unexpected | length == 0
+    fail_msg: >-
+      Unexpected ports open to the network: {{ __verify_unexpected | join(', ') }}.
+      Only {{ verify_expected_ports | join(', ') }} may be reachable.
+    success_msg: "Reachable ports: {{ verify_expected_ports | join(', ') }}."
+    quiet: true
+  vars:
+    __verify_unexpected: >-
+      {{ __verify_ports.stdout_lines | default([]) | map('int')
+         | difference(verify_expected_ports) | list }}
+
+- name: Read the firewall ruleset
+  ansible.builtin.command: nft list ruleset
+  register: __verify_nft
+  changed_when: false
+  check_mode: false
+
+- name: Assert the firewall drops by default and opens nothing extra
+  ansible.builtin.assert:
+    that:
+      - "'policy drop' in __verify_nft.stdout"
+      - __verify_nft_extra | length == 0
+    fail_msg: >-
+      Firewall ruleset is wrong. policy drop present:
+      {{ 'policy drop' in __verify_nft.stdout }}; unexpected destination
+      ports: {{ __verify_nft_extra | join(', ') | default('none', true) }}.
+    success_msg: Firewall is default-drop and opens only the expected ports.
+    quiet: true
+  vars:
+    # Every number appearing after a dport, whether written bare or as a set.
+    __verify_nft_extra: >-
+      {{ __verify_nft.stdout | regex_findall('dport\s*\{?([0-9,\s]+)\}?')
+         | map('regex_findall', '[0-9]+') | flatten | map('int') | unique
+         | difference(verify_expected_ports) | list }}
+
+# ---------------------------------------------------------------------------
+# Wiring checks — angie and xray agree on where the sockets are
+# ---------------------------------------------------------------------------
+- name: Check the unix socket of every path this node serves
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: __verify_socket_stat
+  loop: "{{ __verify_expected_sockets }}"
+  check_mode: false
+
+- name: Assert every expected socket exists
+  ansible.builtin.assert:
+    that: __verify_missing_sockets | length == 0
+    fail_msg: >-
+      Missing xray sockets: {{ __verify_missing_sockets | join(', ') }}.
+      angie proxies to these paths, so each one is a location returning 502.
+    success_msg: >-
+      All {{ __verify_expected_sockets | length }} chain sockets are present.
+    quiet: true
+  vars:
+    __verify_missing_sockets: >-
+      {{ __verify_socket_stat.results | rejectattr('stat.exists')
+         | map(attribute='item') | list }}
+
+# ---------------------------------------------------------------------------
+# Live checks — the chain actually carries traffic, and exits where it should
+# ---------------------------------------------------------------------------
+# Everything above can pass on a deployment that does not work. This is the
+# part that dials each chain the way a client does and looks at where the
+# request came out. Skipped under --check, which cannot run a client.
+- name: Dial every chain this node fronts
+  when:
+    - verify_live | bool
+    - not ansible_check_mode
+    - __verify_live_chains | length > 0
+  block:
+    - name: Create the probe directory
+      ansible.builtin.file:
+        path: "{{ verify_probe_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Render a probe config per chain
+      ansible.builtin.template:
+        src: probe.json.j2
+        dest: "{{ verify_probe_dir }}/{{ item }}.json"
+        owner: root
+        group: root
+        mode: "0600"
+      loop: "{{ __verify_live_chains }}"
+      vars:
+        chain: "{{ item }}"
+
+    - name: Install the probe runner
+      ansible.builtin.template:
+        src: chain-probe.sh.j2
+        dest: "{{ verify_probe_dir }}/chain-probe.sh"
+        owner: root
+        group: root
+        mode: "0700"
+
+    # failed_when is off so every chain is tried and reported together: one
+    # broken route should not hide the state of the other six.
+    - name: Ask each chain where it comes out
+      ansible.builtin.command:
+        argv:
+          - "{{ verify_probe_dir }}/chain-probe.sh"
+          - "{{ verify_probe_dir }}/{{ item }}.json"
+      register: __verify_probes
+      loop: "{{ __verify_live_chains }}"
+      changed_when: false
+      failed_when: false
+      check_mode: false
+
+    - name: Report what each chain answered
+      ansible.builtin.debug:
+        msg: >-
+          {{ item.item }}: {{ (item.stdout | trim) | default('no answer', true) }}
+          (expected {{ hostvars[verify_chain_data[item.item]['exit']]['vpn_egress_ip'] }})
+      loop: "{{ __verify_probes.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: Assert every chain exits through the node it names
+      ansible.builtin.assert:
+        that: __verify_failed_chains | length == 0
+        fail_msg: >-
+          Chains not exiting where they should: {{ __verify_failed_chains | join('; ') }}.
+        success_msg: >-
+          All {{ __verify_live_chains | length }} chains exit through the
+          node they name.
+        quiet: true
+  always:
+    # The configs carry a working credential. They exist for the length of
+    # one check and no longer, whether or not the check passed.
+    - name: Remove the probe directory
+      ansible.builtin.file:
+        path: "{{ verify_probe_dir }}"
+        state: absent

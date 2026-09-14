@@ -1,0 +1,40 @@
+{#- A throwaway client, shaped exactly like a user's: SOCKS on loopback in
+    front of the same VLESS+XHTTP/TLS/443 outbound a subscription hands out.
+    It dials this node's own public name, so the request climbs the whole
+    chain — angie, xray, and for a two-hop chain the far node's angie and xray
+    as well — and comes back out wherever the chain is supposed to exit. -#}
+{{ {
+     'log': {'loglevel': 'warning'},
+     'inbounds': [{
+       'tag': 'probe-socks',
+       'listen': '127.0.0.1',
+       'port': verify_probe_port | int,
+       'protocol': 'socks',
+       'settings': {'auth': 'noauth', 'udp': false},
+     }],
+     'outbounds': [{
+       'tag': 'probe-out',
+       'protocol': 'vless',
+       'settings': {
+         'vnext': [{
+           'address': verify_domain,
+           'port': 443,
+           'users': [{'id': verify_probe_uuid, 'encryption': 'none'}],
+         }],
+       },
+       'streamSettings': {
+         'network': 'xhttp',
+         'security': 'tls',
+         'tlsSettings': {
+           'serverName': verify_domain,
+           'alpn': verify_transit_alpn,
+           'fingerprint': verify_transit_fingerprint,
+         },
+         'xhttpSettings': {
+           'host': verify_domain,
+           'path': verify_chain_data[chain]['path_in'],
+           'mode': 'packet-up',
+         },
+       },
+     }],
+   } | to_nice_json }}

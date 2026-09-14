@@ -1,0 +1,57 @@
+---
+# --- What the structural checks allow -------------------------------------
+# The complete set of ports any node may expose. Anything else in the ruleset
+# is a finding: the design has exactly one listener reachable from the
+# network, and it is angie.
+verify_expected_ports: [22, 80, 443]
+
+# Process names permitted to hold a listening TCP or UDP socket. xray is
+# deliberately absent — every one of its inbounds is a unix socket, so a
+# network listener owned by xray means the topology has grown a direct route
+# that the censor can find and block.
+verify_allowed_listeners:
+  - angie
+  - sshd
+  - systemd-resolve
+  - chronyd
+
+# --- Live chain checks -----------------------------------------------------
+# Dial each chain this node fronts the way a client does, and compare where
+# the traffic came out against where it was supposed to. This is the only
+# check that distinguishes "configured correctly" from "actually works".
+verify_live: true
+
+# Service echoing back the caller's address. Plain text, one address, no JSON
+# to parse. Reached *through* the chain, so it also proves egress works.
+verify_echo_url: https://api.ipify.org
+
+# Loopback port the throwaway client listens on while a check runs.
+verify_probe_port: 10808
+
+# Root-owned scratch space for probe configs. Not /tmp: it is world-writable,
+# and these files carry a working credential.
+verify_probe_dir: /var/cache/xray-probe
+
+# Seconds to wait for the throwaway client to come up, then for the request
+# itself. A two-hop chain crosses two TLS handshakes before the first byte.
+verify_probe_startup: 10
+verify_probe_timeout: 25
+
+# --- Topology --------------------------------------------------------------
+# Only chains configured at both ends: one ending on an unmanaged node has
+# nothing listening, and failing on that would report a deliberate gap as a
+# fault.
+verify_chains: "{{ vpn_chains_ready }}"
+verify_chain_data: "{{ vpn_chain_data }}"
+
+# --- Deployment values this role reads for its own host --------------------
+verify_socket_dir: "{{ vpn_socket_dir }}"
+verify_domain: "{{ vpn_domain }}"
+verify_probe_uuid: "{{ vpn_probe_uuid }}"
+verify_xray_bin: /usr/local/bin/xray
+
+# Must agree with the xray role: the probe presents what the real second leg
+# presents, or it is testing a different path than the one users take.
+verify_transit_alpn:
+  - h2
+verify_transit_fingerprint: chrome
