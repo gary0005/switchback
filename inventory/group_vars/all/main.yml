@@ -136,7 +136,7 @@ vpn_socket_dir: /run/xray
 # rot — rotation counter: bump it to reissue this user's UUID and link.
 vpn_users:
   - { name: ops, tier: all, rot: 1 }    # whoever debugs the deployment
-  - { name: lead, tier: all, rot: 1 }   # test chains as well as the real ones
+  - { name: lead, tier: all, rot: 2 }   # test chains as well as the real ones
 
 # Which chain kinds each tier may use. `test` chains are single-hop and exist
 # to isolate faults, so they go to whoever debugs the deployment, not to users.

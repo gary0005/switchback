@@ -25,6 +25,33 @@ argument_specs:
             both break on more than a couple of minutes of drift.
         type: str
         default: chrony
+      common_congestion_control:
+        description: TCP congestion control to configure.
+        type: str
+        default: bbr
+      common_congestion_module:
+        description:
+          - Kernel module providing it. Loaded explicitly and pinned for the
+            next boot - sysctl accepts an unavailable algorithm silently and
+            then keeps using the previous one.
+        type: str
+        default: tcp_bbr
+      common_modules_file:
+        description: File listing modules to load at boot.
+        type: str
+        default: /etc/modules-load.d/switchback.conf
+      common_qdisc:
+        description: Default queueing discipline.
+        type: str
+        default: fq
+      common_netdev_backlog:
+        description: net.core.netdev_max_backlog.
+        type: int
+        default: 250000
+      common_somaxconn:
+        description: net.core.somaxconn.
+        type: int
+        default: 65535
       common_sysctl_file:
         description: Path of the sysctl drop-in this role renders.
         type: str
@@ -38,7 +65,7 @@ argument_specs:
           - Value for net.core.rmem_max and net.core.wmem_max. QUIC pushes
             large UDP datagrams and degrades on the default buffers.
         type: int
-        default: 16777216
+        default: 134217728
       common_file_max:
         description: Value for fs.file-max.
         type: int

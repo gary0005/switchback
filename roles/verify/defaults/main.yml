@@ -55,6 +55,12 @@ verify_no_credential_patterns:
   - "*dns*api*"
   - "*credentials*"
 
+# --- Kernel tuning ---------------------------------------------------------
+# What the common role configures, asserted here because a congestion control
+# whose module is missing is accepted silently and then ignored.
+verify_congestion_control: "{{ common_congestion_control | default('bbr') }}"
+verify_qdisc: "{{ common_qdisc | default('fq') }}"
+
 # --- DNS -------------------------------------------------------------------
 # There is no Terraform holding the zone, so nothing else notices when the
 # records and the inventory disagree. This check does, and it checks what

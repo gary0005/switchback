@@ -111,6 +111,34 @@
     quiet: true
 
 # ---------------------------------------------------------------------------
+# Kernel tuning — asked for is not the same as applied
+# ---------------------------------------------------------------------------
+# bbr is a module. Setting tcp_congestion_control without loading it is not an
+# error, it is a no-op, and the node keeps cubic while every file on disk says
+# otherwise. That is exactly the kind of thing only a check catches.
+- name: Read the congestion control actually in use
+  ansible.builtin.command:
+    argv: [sysctl, -n, net.ipv4.tcp_congestion_control, net.core.default_qdisc]
+  register: __verify_sysctl
+  changed_when: false
+  check_mode: false
+
+- name: Assert the kernel is tuned as configured
+  ansible.builtin.assert:
+    that:
+      - __verify_sysctl.stdout_lines[0] | trim == verify_congestion_control
+      - __verify_sysctl.stdout_lines[1] | trim == verify_qdisc
+    fail_msg: >-
+      Kernel is running {{ __verify_sysctl.stdout_lines[0] | default('?') | trim }}
+      / {{ __verify_sysctl.stdout_lines[1] | default('?') | trim }}, not
+      {{ verify_congestion_control }} / {{ verify_qdisc }}. Asking sysctl for a
+      congestion control whose module is not loaded fails silently — check
+      that {{ verify_congestion_control }} is in
+      /proc/sys/net/ipv4/tcp_available_congestion_control.
+    success_msg: "Kernel: {{ verify_congestion_control }} over {{ verify_qdisc }}."
+    quiet: true
+
+# ---------------------------------------------------------------------------
 # DNS — the zone and the inventory still agree
 # ---------------------------------------------------------------------------
 # Nothing else catches a record drifting away from vpn_domains: the zone is

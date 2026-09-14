@@ -14,11 +14,21 @@ common_base_packages:
 common_time_sync_service: chrony
 
 common_sysctl_file: /etc/sysctl.d/99-vpn.conf
+
+# bbr ships as a module and is not loaded by default. Asking sysctl for it
+# without loading it leaves the kernel on cubic and says nothing — so the
+# module is loaded explicitly, and pinned for the next boot.
+common_congestion_control: bbr
+common_congestion_module: tcp_bbr
+common_modules_file: /etc/modules-load.d/switchback.conf
+common_qdisc: fq
 common_unattended_upgrades_enabled: true
 
-# QUIC/HTTP3 pushes large UDP datagrams: with the default buffers angie logs
-# a warning and h3 throughput degrades.
-common_socket_buffer_max: 16777216
+# QUIC pushes large UDP datagrams, and a two-hop chain moves every byte twice.
+# The kernel defaults (a few megabytes) cap throughput well below the link.
+common_socket_buffer_max: 134217728
+common_netdev_backlog: 250000
+common_somaxconn: 65535
 common_file_max: 1000000
 
 # Facts the role needs when the play runs with gather_facts: false.

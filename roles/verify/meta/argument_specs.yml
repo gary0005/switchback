@@ -71,6 +71,15 @@ argument_specs:
         description: Filename patterns treated as a credential if found.
         type: list
         elements: str
+      verify_congestion_control:
+        description:
+          - TCP congestion control that must actually be in use. Setting one
+            whose kernel module is not loaded is silently ignored, so this is
+            checked rather than assumed.
+        type: str
+      verify_qdisc:
+        description: Queueing discipline that must actually be in use.
+        type: str
       verify_domains:
         description:
           - Names this node answers to. Each must resolve to this node, among
