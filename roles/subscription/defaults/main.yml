@@ -34,9 +34,17 @@ subscription_chain_data: "{{ vpn_chain_data }}"
 # blocked, which is why a latency test says nothing and a route can pass every
 # check and still disappoint.
 #
-# h3 stays published: the throttling belongs to the network the client sits on,
-# not to this deployment, and a user elsewhere may well be better off on it.
-# The user-facing page says which to reach for.
+# None of which makes h2 the better transport for everything, and the page no
+# longer says it is. Throughput is the wrong axis for streaming, where what
+# matters is not stalling: h2 carries TCP inside TCP, whose retransmit timers
+# fight each other on a lossy link, and h3 has neither that nor head-of-line
+# blocking, and survives a move between Wi-Fi and mobile. Reported from real
+# use, 4K holds up better on h3 — at the cost of more CPU on the node, QUIC
+# running in userspace.
+#
+# So both stay published and the page sorts users by task rather than naming a
+# winner. It also tells them to try the other transport when a route will not
+# come up at all, which is the one thing that reliably distinguishes the two.
 subscription_alpns:
   - h2
   - h3

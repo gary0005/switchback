@@ -26,8 +26,18 @@
   <li><b>{{ n_test }} single-hop route{{ 's' if n_test > 1 else '' }}</b> — for
       testing only: the exit address is the entry address.</li>
 {% endif %}
-  <li>Every route ships twice, as <b>h2</b> and <b>h3</b>. <b>Take the h2 one.</b>
-      h3 rides UDP, which most networks here throttle — it connects, then runs
-      several times slower, and on a weak link it stops holding at all. Try h3
-      only if h2 disappoints you.</li>
+  <li>Every route ships twice, as <b>h2</b> and <b>h3</b>. Same route either
+      way; the transport differs, so pick by what you are doing:
+    <ul>
+      <li><b>h2</b> — the default. Steadier where UDP is throttled, which is
+          most networks here, and markedly faster on large downloads.</li>
+      <li><b>h3</b> — for video and calls. A lost packet does not stall
+          everything behind it and moving between Wi-Fi and mobile does not
+          drop the connection, so 4K tends to play more smoothly. If h3 will
+          not connect or keeps dropping, go back to h2.</li>
+    </ul>
+  </li>
+  <li>If a route will not connect at all, try the same route on the other
+      transport: h2 and h3 run over different protocols, and a network
+      interfering with one often lets the other through.</li>
 </ul>
