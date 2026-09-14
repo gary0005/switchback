@@ -2,12 +2,18 @@
 
 Let's Encrypt certificates via certbot, over the dns-01 challenge.
 
-**Outcome:** a valid certificate for the node's domain under `/etc/letsencrypt/live/<domain>/`, renewing itself, with a deploy hook that reloads angie when it does.
-**Idempotent:** yes — `certbot certonly` is guarded by `creates:`, so it runs once and is skipped afterwards.
+**Outcome:** one certificate covering every name in `acme_domains`, under `/etc/letsencrypt/live/<acme_cert_name>/`, renewing itself, with a deploy hook that reloads angie when it does.
+**Idempotent:** yes — the names the lineage already covers are compared against `acme_domains`, and certbot runs only when they differ.
 **Atomic:** no.
-**Rollback:** none built in. Certificates are left in place; the credentials file and deploy hook are backed up on change. To start over, remove `/etc/letsencrypt/live/<domain>/` and re-run.
+**Rollback:** none built in. Certificates are left in place; the credentials file and deploy hook are backed up on change. To start over, remove `/etc/letsencrypt/live/<acme_cert_name>/` and re-run.
 
-dns-01 rather than http-01: the certificate is issued before the domain takes any traffic, and port 80 never has to be opened for a challenge.
+dns-01 rather than http-01: the certificate is issued before the domain takes any traffic, port 80 never has to be opened for a challenge, and a name pointing at several nodes at once — a shared apex — can still be validated on each of them.
+
+## Why not `creates:`
+
+A `creates:` guard matches as soon as *any* certificate exists for the lineage. Adding an alias to `acme_domains` would then silently do nothing, and angie would go on serving a certificate that does not cover the new name — a failure that only shows up in a browser, days later. So the role reads `certbot certificates --cert-name` and compares the SAN list instead.
+
+The lineage is keyed by inventory hostname rather than by the first domain, so renaming a domain updates the existing lineage instead of stranding it and starting a second one.
 
 ## Requirements
 
@@ -22,7 +28,8 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | Variable | Default | Purpose |
 |---|---|---|
 | `acme_email` | *(required)* | Where Let's Encrypt sends expiry notices |
-| `acme_domain` | `{{ public_domain }}` | Name the certificate is issued for |
+| `acme_domains` | `{{ vpn_domains }}` | Every name the certificate covers |
+| `acme_cert_name` | `{{ inventory_hostname }}` | Lineage name, also the directory under `live/` |
 | `acme_dns_provider` | `cloudflare` | certbot DNS plugin |
 | `acme_config_dir` | `/etc/letsencrypt` | certbot configuration directory |
 | `acme_propagation_seconds` | `30` | Wait for the DNS record to propagate |
@@ -39,6 +46,10 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
     acme_email: ops@example.com
     acme_propagation_seconds: 60
 ```
+
+## Rate limits
+
+Let's Encrypt counts five duplicate certificates per week, where "duplicate" means the same exact set of names. Nodes sharing an apex still get distinct sets — each includes its own per-node name — so the shared apex costs nothing here. Repeatedly re-issuing *one* node's certificate is what runs into it; use `--dry-run` while debugging.
 
 ## Adding a DNS provider
 

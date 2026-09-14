@@ -32,23 +32,47 @@
     mode: "0600"
     backup: true
 
-- name: Request certificate
+# What makes this idempotent is comparing the names the lineage already
+# covers, not the presence of a file. A `creates:` guard matches as soon as
+# any certificate exists, so adding an alias to acme_domains would silently do
+# nothing and angie would serve a certificate missing the new name.
+# Reads only, so it neither reports a change nor is skipped in check mode.
+- name: Read the names the current certificate covers
   ansible.builtin.command:
     argv:
       - certbot
-      - certonly
-      - --non-interactive
-      - --agree-tos
-      - -m
-      - "{{ acme_email }}"
-      - "--dns-{{ acme_dns_provider }}"
-      - "--dns-{{ acme_dns_provider }}-credentials"
-      - "{{ acme_config_dir }}/{{ acme_dns_provider }}.ini"
-      - "--dns-{{ acme_dns_provider }}-propagation-seconds"
-      - "{{ acme_propagation_seconds | int }}"
-      - -d
-      - "{{ acme_domain }}"
-    creates: "{{ acme_config_dir }}/live/{{ acme_domain }}/fullchain.pem"
+      - certificates
+      - --cert-name
+      - "{{ acme_cert_name }}"
+  register: __acme_existing
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Request or extend the certificate
+  ansible.builtin.command:
+    argv: "{{ __acme_argv }}"
+  vars:
+    __acme_covered: >-
+      {{ (__acme_existing.stdout | default('')
+          | regex_search('Domains:\s*(.+)', '\1')
+          | default([], true) | join(' ')).split() }}
+    __acme_argv: >-
+      {%- set argv = [
+            'certbot', 'certonly', '--non-interactive', '--agree-tos',
+            '--expand', '--cert-name', acme_cert_name, '-m', acme_email,
+            '--dns-' ~ acme_dns_provider,
+            '--dns-' ~ acme_dns_provider ~ '-credentials',
+            acme_config_dir ~ '/' ~ acme_dns_provider ~ '.ini',
+            '--dns-' ~ acme_dns_provider ~ '-propagation-seconds',
+            acme_propagation_seconds | string,
+          ] -%}
+      {%- for d in acme_domains -%}
+      {%-   set _ = argv.extend(['-d', d]) -%}
+      {%- endfor -%}
+      {{ argv }}
+  when: __acme_covered | symmetric_difference(acme_domains) | length > 0
+  changed_when: true
 
 - name: Install renewal deploy hook
   ansible.builtin.template:

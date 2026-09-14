@@ -3,11 +3,15 @@ argument_specs:
   main:
     short_description: Issue a TLS certificate over dns-01.
     description:
-      - Installs certbot with a DNS plugin and requests a certificate for the
-        node's public domain.
+      - Installs certbot with a DNS plugin and issues one certificate covering
+        every name the node answers to.
       - dns-01 rather than http-01 so the certificate is issued before the
-        domain takes any traffic and port 80 never has to be opened for a
-        challenge.
+        domain takes any traffic, port 80 never has to be opened for a
+        challenge, and a name pointing at several nodes at once - a shared
+        apex - can still be validated on each of them.
+      - Idempotency comes from comparing the names the lineage already covers
+        against acme_domains, so adding an alias reissues the certificate
+        instead of silently leaving the old one in place.
       - Requires the vault variable used by the provider credentials template,
         for example vault_cf_api_token for Cloudflare.
     options:
@@ -19,12 +23,19 @@ argument_specs:
             told when renewal starts failing.
         type: str
         required: true
-      acme_domain:
+      acme_domains:
         description:
-          - Name the certificate is issued for. Defaults to the node's
-            inventory public_domain, which is what angie terminates TLS for.
+          - Every name the certificate covers, which is every name angie
+            terminates TLS for on this node.
+        type: list
+        elements: str
+        required: true
+      acme_cert_name:
+        description:
+          - Lineage name, also the directory under live/. Keyed by inventory
+            hostname rather than by the first domain, so renaming a domain
+            updates the existing lineage instead of stranding it.
         type: str
-        default: "{{ public_domain }}"
       acme_dns_provider:
         description:
           - certbot DNS plugin to use. Selects both the

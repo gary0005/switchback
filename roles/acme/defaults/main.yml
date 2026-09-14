@@ -1,12 +1,17 @@
 ---
 # Certificates are issued over dns-01 rather than http-01: the certificate is
 # obtained before the domain takes any traffic, and port 80 never has to be
-# opened for a challenge.
+# opened for a challenge. It is also the only challenge that works for a name
+# pointing at several nodes at once, as a shared apex does.
 acme_dns_provider: cloudflare
 
-# Name the certificate is issued for. Defaults to the node's inventory
-# `public_domain` because that is the name angie terminates TLS for.
-acme_domain: "{{ public_domain }}"
+# Every name the certificate covers — the node's primary plus its aliases.
+acme_domains: "{{ vpn_domains }}"
+
+# Lineage name, which is also the directory under live/. Keyed by inventory
+# hostname rather than by the first domain: a renamed domain then updates the
+# existing lineage instead of stranding it and starting a second one.
+acme_cert_name: "{{ inventory_hostname }}"
 
 # Email Let's Encrypt uses for expiry notices. There is no meaningful default,
 # so it is declared here but left unset: set it in your inventory and let the
