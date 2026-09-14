@@ -7,60 +7,57 @@
 # A direct route to xray gets found and blocked quickly, and it is exactly the
 # kind of thing a well-meaning edit adds back without anyone noticing.
 
+# One listing for both checks below: protocol, port and owner, with the
+# kernel's ephemeral range excluded for UDP. An outbound UDP socket shows up
+# in `ss -u` as UNCONN exactly like a listener would, so without this xray's
+# own outgoing connections read as ports it has opened.
 - name: Read listening sockets and their owners
-  ansible.builtin.command: ss -H -ltunp
-  register: __verify_listeners
-  changed_when: false
-  check_mode: false
-
-- name: Assert xray holds no network listener
-  ansible.builtin.assert:
-    that: __verify_xray_bound | length == 0
-    fail_msg: >-
-      xray is listening on the network: {{ __verify_xray_bound | join('; ') }}.
-      Every inbound must be a unix socket — a bound port means traffic can
-      reach xray without passing through angie, which is the one thing this
-      deployment is built to prevent.
-    success_msg: xray binds no TCP or UDP port.
-    quiet: true
-  vars:
-    __verify_xray_bound: >-
-      {{ __verify_listeners.stdout_lines | default([]) | select('search', '"xray"') | list }}
-
-# Port and owner together: a port outside the expected set is only a finding
-# when something unexpected holds it. A DHCP client on 68 is not reachable —
-# the firewall drops inbound there and conntrack lets the lease answer back —
-# whereas the same port held by something nobody can name is worth stopping
-# for.
-- name: Read publicly bound ports and what holds them
   ansible.builtin.shell:
     executable: /bin/bash
     cmd: |
       set -o pipefail
+      read -r lo hi < /proc/sys/net/ipv4/ip_local_port_range
       ss -H -ltunp \
-        | awk '$5 !~ /^(127\.|\[::1\])/ {
-                 n = split($5, a, ":"); port = a[n];
-                 owner = "unknown";
-                 if (match($0, /\(\("[^"]+"/)) {
-                     owner = substr($0, RSTART + 3, RLENGTH - 4);
-                 }
-                 print port, owner
-               }' \
+        | awk -v lo="$lo" -v hi="$hi" '
+            $5 ~ /^(127\.|\[::1\])/ { next }
+            {
+              n = split($5, a, ":"); port = a[n] + 0
+              if ($1 == "udp" && port >= lo && port <= hi) next
+              owner = "unknown"
+              if (match($0, /\(\("[^"]+"/)) {
+                  owner = substr($0, RSTART + 3, RLENGTH - 4)
+              }
+              print $1, port, owner
+            }' \
         | sort -u
   register: __verify_ports
   changed_when: false
   check_mode: false
+
+- name: Assert xray listens on the peer port and nothing else
+  ansible.builtin.assert:
+    that: __verify_xray_stray | length == 0
+    fail_msg: >-
+      xray is listening where it must not: {{ __verify_xray_stray | join('; ') }}.
+      {% if verify_relay_peers | length > 0 %}Only port
+      {{ verify_relay_port | trim }} is permitted here, and only because a
+      direct peer chain terminates on this node.{% else %}No direct chain ends
+      on this node, so every xray inbound must be a unix socket.{% endif %}
+    success_msg: >-
+      {{ 'xray holds only the peer port ' ~ (verify_relay_port | trim)
+         if verify_relay_peers | length > 0
+         else 'xray binds no TCP or UDP port' }}.
+    quiet: true
 
 - name: Assert nothing unexpected is listening
   ansible.builtin.assert:
     that: __verify_unexpected | length == 0
     fail_msg: >-
       Unexpected listeners: {{ __verify_unexpected | join('; ') }}.
-      Only {{ verify_expected_ports | join(', ') }} may be open, and only
-      {{ verify_allowed_listeners | join(', ') }} may hold anything else.
     success_msg: >-
-      Nothing listening beyond {{ verify_expected_ports | join(', ') }} and
-      known system clients.
+      Nothing listening beyond {{ verify_expected_ports | join(', ') }}{{
+      ', the peer port ' ~ (verify_relay_port | trim)
+      if verify_relay_peers | length > 0 else '' }} and known system clients.
     quiet: true
 
 - name: Read the firewall ruleset
@@ -85,7 +82,9 @@
     __verify_nft_extra: >-
       {{ __verify_nft.stdout | regex_findall('dport\s*\{?([0-9,\s]+)\}?')
          | map('regex_findall', '[0-9]+') | flatten | map('int') | unique
-         | difference(verify_expected_ports) | list }}
+         | difference(verify_expected_ports)
+         | difference([verify_relay_port | int] if verify_relay_peers | length > 0 else [])
+         | list }}
 
 # The whole reason certificates are issued on the controller is that this
 # credential is account-wide at the registrar: a node holding it would hand an

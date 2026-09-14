@@ -12,7 +12,10 @@
 {%-   set _ = served.append({'id': c.name ~ '-in',
                              'path': angie_chain_data[c.name]['path_in']}) -%}
 {%- endfor -%}
-{%- for c in angie_chains if c.exit == me and c.via != me -%}
+{#- Only chains whose second leg is disguised as HTTPS pass through here. One
+    carried directly reaches xray's own Reality port and angie never sees it. -#}
+{%- for c in angie_chains if c.exit == me and c.via != me
+      and angie_chain_data[c.name]['transit_mode'] == 'angie' -%}
 {%-   set _ = served.append({'id': c.name ~ '-transit',
                              'path': angie_chain_data[c.name]['path_transit']}) -%}
 {%- endfor -%}

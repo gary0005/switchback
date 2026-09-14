@@ -3,8 +3,11 @@
     a Jinja structure and piped through to_nice_json at the end, so it cannot
     emit trailing commas or half-quoted values however the topology changes.
 
-    Every inbound listens on a unix socket. Nothing here binds a network port
-    — angie owns 443, and a chain's second leg arrives as ordinary HTTPS.
+    Inbounds are unix sockets, with exactly one exception: the Reality port
+    that carries direct peer links between nodes abroad. angie owns 443, and a
+    second leg out of a node behind the filtering border still arrives as
+    ordinary HTTPS. The firewall opens the Reality port to peer addresses
+    alone, which is what the verify role asserts.
 
     Peer values are read through hostvars under their inventory-level `vpn_*`
     names: a peer may belong to another play, where this role's defaults are
@@ -57,9 +60,40 @@
 {%-     set _ = rules.append({
           'type': 'field', 'inboundTag': ['in-' ~ name], 'outboundTag': 'direct'}) -%}
 {%-   else -%}
-{#-     Second leg. Deliberately the same VLESS+XHTTP over TLS/443 a client
-        speaks: it terminates on the far node's angie, so on the wire it is
-        another HTTPS session to a domain that serves a real site. -#}
+{%-     if c.transit_mode == 'direct' -%}
+{#-       Between two nodes abroad, where nothing inspects the leg: straight
+          to the far node's xray over Reality. Saves terminating TLS in its
+          angie and proxying through a socket, in both directions. -#}
+{%-       set _ = outbounds.append({
+            'tag': 'out-' ~ name,
+            'protocol': 'vless',
+            'settings': {
+              'vnext': [{
+                'address': hostvars[c.exit]['ansible_host'],
+                'port': hostvars[c.exit]['vpn_relay_port'] | int,
+                'users': [{
+                  'id': c.transit_uuid,
+                  'encryption': 'none',
+                  'flow': 'xtls-rprx-vision',
+                }],
+              }],
+            },
+            'streamSettings': {
+              'network': 'tcp',
+              'security': 'reality',
+              'realitySettings': {
+                'serverName': xray_reality_server_names[0],
+                'fingerprint': xray_transit_fingerprint,
+                'publicKey': __xray_reality[c.exit][1],
+                'shortId': hostvars[c.exit]['vpn_reality_short_id'] | trim,
+              },
+            },
+          }) -%}
+{%-     else -%}
+{#-       Out of a node whose traffic crosses the border: deliberately the
+          same VLESS+XHTTP over TLS/443 a client speaks, terminating on the
+          far node's angie, so on the wire it is another HTTPS session to a
+          domain that serves a real site. -#}
 {%-     set peer = hostvars[c.exit]['vpn_domain'] -%}
 {%-     set _ = outbounds.append({
           'tag': 'out-' ~ name,
@@ -86,14 +120,51 @@
             },
           },
         }) -%}
+{%-     endif -%}
 {%-     set _ = rules.append({
           'type': 'field', 'inboundTag': ['in-' ~ name], 'outboundTag': 'out-' ~ name}) -%}
 {%-   endif -%}
 {%- endfor -%}
 
-{#- Chains this node is the far end of. One service credential per chain, so a
-    leaked one exposes a single route rather than the mesh. -#}
-{%- for name in transit -%}
+{#- One Reality inbound per node carries every direct chain ending here: one
+    port, one handshake to borrow, a client entry per chain. This is the only
+    thing in the deployment that binds a network port besides angie, and the
+    firewall opens it to peer addresses alone. -#}
+{%- set relay_clients = [] -%}
+{%- for name in transit if xray_chain_data[name]['transit_mode'] == 'direct' -%}
+{%-   set _ = relay_clients.append({
+        'id': xray_chain_data[name]['transit_uuid'],
+        'email': 'relay@' ~ name,
+        'flow': 'xtls-rprx-vision',
+      }) -%}
+{%- endfor -%}
+{%- if relay_clients | length > 0 -%}
+{%-   set _ = rules.append({
+        'type': 'field', 'inboundTag': ['in-relay'], 'outboundTag': 'direct'}) -%}
+{%-   set _ = inbounds.append({
+        'tag': 'in-relay',
+        'listen': '0.0.0.0',
+        'port': xray_relay_port | int,
+        'protocol': 'vless',
+        'settings': {'clients': relay_clients, 'decryption': 'none'},
+        'streamSettings': {
+          'network': 'tcp',
+          'security': 'reality',
+          'realitySettings': {
+            'dest': xray_reality_dest,
+            'serverNames': xray_reality_server_names,
+            'privateKey': __xray_reality[inventory_hostname][0],
+            'shortIds': [xray_reality_short_id | trim],
+          },
+        },
+      }) -%}
+{%- endif -%}
+
+{#- Chains this node is the far end of, carried as HTTPS to angie. One service
+    credential per chain, so a leaked one exposes a single route rather than
+    the mesh. Chains carried directly are served by the Reality inbound
+    above instead. -#}
+{%- for name in transit if xray_chain_data[name]['transit_mode'] == 'angie' -%}
 {%-   set c = xray_chain_data[name] -%}
 {%-   set _ = inbounds.append({
         'tag': 'transit-' ~ name,

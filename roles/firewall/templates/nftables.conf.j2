@@ -2,16 +2,27 @@
     first line of content would swallow the newline after it and comment that
     line out.
 
-    There is no peer set and no relay port. Every node exposes exactly SSH and
-    the web ports, because the only listener behind them is angie: xray binds
-    unix sockets, and a chain's second leg arrives as ordinary HTTPS on 443
-    like any user's. If this file ever grows a port for xray, the design has
-    been broken somewhere upstream. -#}
+    Every node exposes SSH and the web ports. A node that terminates a direct
+    peer chain also exposes xray's Reality port — but only to the addresses
+    that dial it, taken from the inventory rather than written by hand. A
+    second leg out of a node behind the filtering border still arrives on 443
+    like any user's.
+
+    If this file ever opens the relay port to the world, or grows another port
+    for xray, the design has been broken somewhere upstream. -#}
+{%- set relay_addrs = firewall_relay_peers
+      | map('extract', hostvars, 'ansible_host') | list -%}
 #!/usr/sbin/nft -f
 {{ ansible_managed | comment }}
 flush ruleset
 
 table inet filter {
+{% if relay_addrs | length > 0 %}
+    set relay_peers {
+        type ipv4_addr
+        elements = { {{ relay_addrs | join(', ') }} }
+    }
+{% endif %}
 
     chain input {
         type filter hook input priority 0; policy drop;
@@ -32,6 +43,12 @@ table inet filter {
         # family-agnostic, so they cover v6 ingress as well as v4.
         tcp dport { {{ firewall_ingress_tcp_ports | join(', ') }} } accept
         udp dport { {{ firewall_ingress_udp_ports | join(', ') }} } accept
+{% if relay_addrs | length > 0 %}
+
+        # Direct peer link into xray, source-restricted to the nodes that
+        # dial it. Everyone else gets the same default drop as before.
+        tcp dport {{ firewall_relay_port | int }} ip saddr @relay_peers accept
+{% endif %}
     }
 
     chain forward { type filter hook forward priority 0; policy drop; }

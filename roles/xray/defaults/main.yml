@@ -47,6 +47,46 @@ xray_tier_kinds: "{{ vpn_tier_kinds }}"
 # path users do not take.
 xray_probe_uuid: "{{ vpn_probe_uuid }}"
 
+# --- The direct peer link --------------------------------------------------
+# Chains whose second leg runs between two nodes abroad reach the far node's
+# xray directly, over Reality on this port, instead of being disguised as
+# HTTPS to its angie. One TLS termination and one proxy hop cheaper in each
+# direction — and safe only because nothing inspects that leg.
+xray_relay_port: "{{ vpn_relay_port }}"
+xray_reality_priv_hex: "{{ vpn_reality_priv_hex }}"
+xray_reality_short_id: "{{ vpn_reality_short_id }}"
+
+# Where Reality borrows its handshake. Two requirements, and the second is the
+# one that bites: the site must speak TLS 1.3 with h2, and **every node
+# running a peer inbound must be able to reach it**. Reality proxies the
+# handshake there, so a dest the node cannot open makes every connection hang
+# rather than fail — www.microsoft.com times out from Riga, which is exactly
+# how that was found.
+#
+# Check before changing: `curl -m 6 https://<host>/` from each node, and
+# `openssl s_client -alpn h2 -tls1_3` for the protocol requirement.
+xray_reality_dest: "www.cloudflare.com:443"
+xray_reality_server_names:
+  - www.cloudflare.com
+
+# Nodes whose Reality keypair this one needs: the far end of every direct
+# chain it dials, plus itself when it terminates one. The public half is
+# computed from the private half by the xray binary, so each side derives the
+# other's locally — no cross-host facts, no ordering between plays.
+xray_reality_nodes: >-
+  {%- set out = [] -%}
+  {%- for c in xray_chains -%}
+  {%-   if xray_chain_data[c.name]['transit_mode'] == 'direct' -%}
+  {%-     if c.via == inventory_hostname -%}
+  {%-       set _ = out.append(c.exit) -%}
+  {%-     endif -%}
+  {%-     if c.exit == inventory_hostname -%}
+  {%-       set _ = out.append(inventory_hostname) -%}
+  {%-     endif -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ out | unique | list }}
+
 # --- Egress ----------------------------------------------------------------
 # Applied by the freedom outbound on whichever node a chain exits through.
 # UseIPv4 keeps egress off AAAA records, which is what you want when only the

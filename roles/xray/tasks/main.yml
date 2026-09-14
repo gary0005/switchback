@@ -74,6 +74,41 @@
         path: "{{ xray_stage_dir }}"
         state: absent
 
+# Only the private half is derived from the seed; the public half comes out of
+# the xray binary, which also normalises the private key (x25519 clamping), so
+# the value that ends up in the config is the one xray itself produced.
+#
+# shell rather than command: the derivation pipes python into xray into awk.
+# It only reads, so it neither reports a change nor may be skipped in check
+# mode — without check_mode: false the register below comes back empty and
+# every template downstream fails on an undefined key.
+- name: Derive the reality keypair of every node this one links to directly
+  ansible.builtin.shell:
+    executable: /bin/bash
+    cmd: |
+      set -euo pipefail
+      PRIV=$(python3 -c \
+        "import base64,sys;print(base64.urlsafe_b64encode(bytes.fromhex(sys.argv[1])).decode().rstrip('='))" \
+        '{{ __xray_peer_priv_hex | trim }}')
+      "{{ xray_bin }}" x25519 -i "$PRIV" \
+        | awk '/[Pp]rivate/ { priv = $NF } /[Pp]ublic/ { pub = $NF } END { print priv, pub }'
+  vars:
+    __xray_peer_priv_hex: "{{ hostvars[item]['vpn_reality_priv_hex'] }}"
+  register: __xray_reality_keys
+  changed_when: false
+  check_mode: false
+  loop: "{{ xray_reality_nodes }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Register the keys as a lookup map
+  ansible.builtin.set_fact:
+    __xray_reality: >-
+      {{ dict(__xray_reality_keys.results | map(attribute='item')
+              | zip(__xray_reality_keys.results | map(attribute='stdout')
+                    | map('split', ' ') | map('map', 'trim'))) }}
+  when: xray_reality_nodes | length > 0
+
 - name: Deploy xray config
   ansible.builtin.template:
     src: config.json.j2

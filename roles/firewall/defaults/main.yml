@@ -16,6 +16,17 @@ firewall_ssh_port: 22
 firewall_ingress_tcp_ports: [80, 443]
 firewall_ingress_udp_ports: [443]
 
+# --- The direct peer link --------------------------------------------------
+# Chains between two nodes abroad reach xray on this port rather than being
+# disguised as HTTPS to angie. It is the only port besides 22/80/443 that any
+# node exposes, and it is opened *only* to the addresses that actually dial
+# it — so xray stays unreachable for everyone else, which is the property the
+# whole design rests on.
+#
+# An empty peer list means no direct chain ends here and the port stays shut.
+firewall_relay_port: "{{ vpn_relay_port }}"
+firewall_relay_peers: "{{ vpn_relay_peers }}"
+
 # Facts the role needs when the play runs with gather_facts: false.
 firewall_required_facts:
   - os_family

@@ -80,20 +80,69 @@ vpn_chains_ready: >-
 # chain name means each side computes it locally — no cross-host facts, no
 # play ordering. Defined here rather than in a role's defaults because role
 # defaults are not in `hostvars` for a host belonging to another play.
+# `transit_mode` is how a chain's second leg is carried, and it follows from
+# where the chain is entered:
+#
+#   angie   the leg leaves a node whose traffic crosses the filtering border,
+#           so it is disguised as an ordinary HTTPS session to the far node's
+#           angie on 443 — indistinguishable from a user's own connection.
+#   direct  the leg is between two nodes abroad, where nothing inspects it.
+#           It reaches the far node's xray on its own port, which saves a TLS
+#           termination and a proxy hop in each direction.
+#
+# Single-hop chains have no second leg at all.
 vpn_chain_data: >-
   {%- set out = {} -%}
   {%- for c in vpn_chains -%}
   {%-   set base = vault_seed ~ ':chain:' ~ c.name -%}
+  {%-   set kind = 'test' if c.via == c.exit else 'multi' -%}
+  {%-   set mode = 'none' if kind == 'test'
+                   else ('angie' if c.via in groups['domestic'] | default([])
+                         else 'direct') -%}
   {%-   set _ = out.update({c.name: {
           'via': c.via,
           'exit': c.exit,
-          'kind': 'test' if c.via == c.exit else 'multi',
+          'kind': kind,
+          'transit_mode': mode,
           'path_in': '/' ~ ((base ~ ':in') | hash('sha256'))[:14],
           'path_transit': '/' ~ ((base ~ ':transit') | hash('sha256'))[:14],
           'transit_uuid': (base ~ ':transit') | to_uuid,
         }}) -%}
   {%- endfor -%}
   {{ out }}
+
+# --- The direct peer link --------------------------------------------------
+# One port per node, derived like everything else, carrying every `direct`
+# chain that ends there. Reality rather than plain TLS: it borrows a real
+# site's handshake, so the port does not look like a proxy to anyone who
+# connects to it — and it needs no certificate of its own.
+#
+# The firewall opens this port only to the addresses of nodes that actually
+# dial it, so "xray is reachable" stays false for everybody else. That is the
+# condition the verify role asserts, now that it can no longer assert xray
+# listens on nothing at all.
+vpn_relay_port: >-
+  {{ 20000 + ((((vault_seed ~ ':relayport:' ~ inventory_hostname)
+       | hash('sha256'))[:6] | int(base=16)) % 40000) }}
+
+# Reality's private key as hex, per node. The public half is computed from it
+# by the xray binary on whichever node needs it, so a peer derives its
+# counterpart locally — no cross-host facts, no ordering between plays.
+vpn_reality_priv_hex: >-
+  {{ (vault_seed ~ ':reality:priv:' ~ inventory_hostname) | hash('sha256') }}
+vpn_reality_short_id: >-
+  {{ ((vault_seed ~ ':reality:sid:' ~ inventory_hostname) | hash('sha256'))[:8] }}
+
+# Nodes that dial this one directly: the far ends of every `direct` chain
+# terminating here. Read by the firewall, which opens the relay port to these
+# addresses and to nobody else.
+vpn_relay_peers: >-
+  {{ vpn_chains
+     | selectattr('exit', 'eq', inventory_hostname)
+     | map(attribute='name')
+     | map('extract', vpn_chain_data)
+     | selectattr('transit_mode', 'eq', 'direct')
+     | map(attribute='via') | unique | list }}
 
 # Secret prefix angie serves subscriptions under. Deployment-wide rather than
 # per-node so one link keeps working whichever domain a user reaches.

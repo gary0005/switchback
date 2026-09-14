@@ -6,15 +6,33 @@
 # keeps a DHCP client on port 68 from failing the run: it is not reachable —
 # the firewall drops inbound there — while an unrecognised process on the
 # same port still is worth stopping for.
+# Ports xray may hold: the peer port when a direct chain ends here, nothing
+# otherwise. Reads the shared listing, so ephemeral outbound sockets are
+# already gone.
+__verify_xray_stray: >-
+  {%- set out = [] -%}
+  {%- for line in __verify_ports.stdout_lines | default([]) -%}
+  {%-   set parts = line.split() -%}
+  {%-   if parts[2] | default('') == 'xray' -%}
+  {%-     if verify_relay_peers | length == 0
+            or (parts[1] | int) != (verify_relay_port | int) -%}
+  {%-       set _ = out.append(parts[0] ~ '/' ~ parts[1]) -%}
+  {%-     endif -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ out }}
+
 __verify_unexpected: >-
   {%- set out = [] -%}
   {%- for line in __verify_ports.stdout_lines | default([]) -%}
   {%-   set parts = line.split() -%}
-  {%-   set port = parts[0] | int -%}
-  {%-   set owner = parts[1] | default('unknown', true) -%}
+  {%-   set port = parts[1] | int -%}
+  {%-   set owner = parts[2] | default('unknown', true) -%}
   {%-   if port not in verify_expected_ports
+          and not (verify_relay_peers | length > 0
+                   and port == (verify_relay_port | int))
           and owner not in verify_allowed_listeners -%}
-  {%-     set _ = out.append(owner ~ ' on port ' ~ port) -%}
+  {%-     set _ = out.append(owner ~ ' on ' ~ parts[0] ~ '/' ~ port) -%}
   {%-   endif -%}
   {%- endfor -%}
   {{ out }}
@@ -46,7 +64,8 @@ __verify_expected_sockets: >-
   {%- for c in verify_chains if c.via == inventory_hostname -%}
   {%-   set _ = out.append(verify_socket_dir ~ '/' ~ c.name ~ '-in.sock') -%}
   {%- endfor -%}
-  {%- for c in verify_chains if c.exit == inventory_hostname and c.via != inventory_hostname -%}
+  {%- for c in verify_chains if c.exit == inventory_hostname and c.via != inventory_hostname
+        and verify_chain_data[c.name]['transit_mode'] == 'angie' -%}
   {%-   set _ = out.append(verify_socket_dir ~ '/' ~ c.name ~ '-transit.sock') -%}
   {%- endfor -%}
   {{ out }}

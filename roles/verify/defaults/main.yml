@@ -55,6 +55,17 @@ verify_no_credential_patterns:
   - "*dns*api*"
   - "*credentials*"
 
+# --- The direct peer link --------------------------------------------------
+# xray may hold exactly one network port: the Reality link that carries direct
+# chains between nodes abroad. The check is no longer "xray listens on
+# nothing" but "xray listens on this and nothing else, and the firewall opens
+# it to peers alone" — which is the property that actually matters.
+#
+# Empty peer list means no direct chain ends here, and then xray must again
+# hold no port at all.
+verify_relay_port: "{{ vpn_relay_port }}"
+verify_relay_peers: "{{ vpn_relay_peers }}"
+
 # --- Kernel tuning ---------------------------------------------------------
 # What the common role configures, asserted here because a congestion control
 # whose module is missing is accepted silently and then ignored.
