@@ -46,6 +46,7 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `angie_access_log` | `false` | Whether to keep an access log |
 | `angie_client_max_body_size` | `0` | `client_max_body_size`; 0 disables the limit |
 | `angie_proxy_timeout` | `300s` | Read and send timeout for XHTTP locations |
+| `angie_repo_packages` | `[python3-debian]` | What `deb822_repository` needs to run at all |
 | `angie_repo_key_checksum` | `""` | SHA256 pinning the signing key; empty is trust-on-first-use |
 | `angie_required_facts` | `[os_family, distribution, distribution_release]` | Facts gathered if the play sets `gather_facts: false` |
 

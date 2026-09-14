@@ -5,6 +5,18 @@
   when: not ansible_facts.keys() | list |
     intersect(angie_required_facts) == angie_required_facts
 
+# deb822_repository is implemented on top of the python3-debian library and
+# refuses to run without it. Installed explicitly rather than through the
+# module's own install_python_debian, which hides a package installation
+# inside a task that reads as configuration — and only works when the remote
+# interpreter is the system Python.
+- name: Install what the repository tasks need
+  ansible.builtin.apt:
+    name: "{{ angie_repo_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
 # Into a dedicated keyring rather than /etc/apt/trusted.gpg.d: a key dropped
 # there is trusted for every repository on the system, not just this one.
 - name: Add Angie signing key

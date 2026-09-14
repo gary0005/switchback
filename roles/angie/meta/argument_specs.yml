@@ -78,6 +78,14 @@ argument_specs:
             retain a record of who passed through it and when.
         type: bool
         default: false
+      angie_repo_packages:
+        description:
+          - Packages the repository tasks need. deb822_repository is built on
+            python3-debian and fails without it.
+        type: list
+        elements: str
+        default:
+          - python3-debian
       angie_repo_key_url:
         description: Where the Angie signing key is fetched from.
         type: str
