@@ -4,8 +4,15 @@
 # and `--tags verify` is what settles whether it actually works.
 ansible_host: 203.0.113.12
 
-# Names angie terminates TLS for, and that the certificate covers. The apex is
-# not here: it resolves to one node only, because http-01 is answered by
-# whichever node the name points at. See inventory/host_vars/v3.
+# Names angie terminates TLS for, and that the certificate covers. The first is
+# this node's primary: chains and subscription links address it by that name.
+# The apex is an alias shared with the other nodes — several A records under
+# one name, which visitors round-robin between. Certificates come over dns-01,
+# so sharing a name across nodes costs nothing: each node proves ownership by
+# writing a TXT record, not by being the one the name resolves to.
+#
+# Read across plays through hostvars, so it belongs in the inventory rather
+# than in a role's defaults.
 vpn_domains:
   - v2.example.com
+  - example.com

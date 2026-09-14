@@ -19,11 +19,11 @@ These do not ask whether the deployment works. They ask whether it is still buil
 | reachable ports ⊆ `verify_expected_ports` | anything but 22, 80 and 443 answers on a non-loopback address |
 | ruleset says `policy drop`, opens nothing extra | the firewall has grown a port, or stopped dropping by default |
 | every expected socket exists | angie proxies to a path xray is not listening on — a location returning 502 |
-| every name resolves to this node, once | a record drifted from `vpn_domains`, or a name points at several nodes |
+| every name resolves to this node | a record drifted away from `vpn_domains` |
 
 The first two are the ones worth having. A direct route to xray is what gets a deployment noticed and blocked, and it is exactly the kind of thing a well-meaning edit adds back without anyone noticing. Making it fail the run is cheaper than finding out from users.
 
-The DNS check exists because nothing else holds the zone — there is no Terraform state, the records are maintained by hand at the registrar. It also catches the one mistake http-01 cannot survive: a name resolving to more than one node, which makes renewal succeed or fail by luck. Sixty days is a long time to not know that.
+The DNS check exists because nothing else holds the zone — there is no Terraform state, the records are maintained by hand at the registrar. A name resolving to several nodes is fine and expected: the apex does that, and with dns-01 it costs nothing. What the check catches is a name that stopped pointing at this node at all, which otherwise shows up as a browser certificate error or a chain that cannot be dialled.
 
 ## The live check
 
@@ -52,8 +52,8 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `verify_live` | `true` | Whether to dial the chains at all |
 | `verify_expected_ports` | `[22, 80, 443]` | The complete set of ports a node may expose |
 | `verify_echo_url` | `https://api.ipify.org` | Service echoing the caller's address as plain text |
-| `verify_domains` | `{{ vpn_domains }}` | Names that must resolve to this node, and to one address |
-| `verify_node_address` | `{{ ansible_host }}` | The address they must resolve to |
+| `verify_domains` | `{{ vpn_domains }}` | Names that must resolve to this node, among others |
+| `verify_node_address` | `{{ ansible_host }}` | The address that must be among their records |
 | `verify_chains` | `{{ vpn_chains_ready }}` | Chains to check |
 | `verify_chain_data` | `{{ vpn_chain_data }}` | Per-chain paths and exits |
 | `verify_probe_uuid` | `{{ vpn_probe_uuid }}` | Identity the probe presents |

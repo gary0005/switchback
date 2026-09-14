@@ -4,11 +4,10 @@ ansible_host: 203.0.113.13
 
 # Names angie terminates TLS for, and that the certificate covers. The first is
 # this node's primary: chains and subscription links address it by that name.
-#
-# The apex lives on exactly one node. Certificates are issued over http-01, and
-# that challenge is answered by whichever node the name resolves to — so a name
-# pointing at several nodes would validate on one of them at random. See the
-# acme role.
+# The apex is an alias shared with the other nodes — several A records under
+# one name, which visitors round-robin between. Certificates come over dns-01,
+# so sharing a name across nodes costs nothing: each node proves ownership by
+# writing a TXT record, not by being the one the name resolves to.
 #
 # Read across plays through hostvars, so it belongs in the inventory rather
 # than in a role's defaults.

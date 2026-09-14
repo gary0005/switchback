@@ -80,8 +80,8 @@
 # DNS — the zone and the inventory still agree
 # ---------------------------------------------------------------------------
 # Nothing else catches a record drifting away from vpn_domains: the zone is
-# maintained by hand. A wrong record surfaces as certbot failing to renew,
-# sixty days later, so it is worth asserting up front.
+# maintained by hand. A wrong record surfaces as a browser certificate error
+# or a chain that cannot be dialled, so it is worth asserting up front.
 - name: Resolve every name this node answers to
   ansible.builtin.command: "getent ahostsv4 {{ item }}"
   register: __verify_dns
@@ -92,7 +92,7 @@
   loop_control:
     label: "{{ item }}"
 
-- name: Assert every name points at this node and nowhere else
+- name: Assert every name points at this node
   ansible.builtin.assert:
     that: __verify_dns_problems | length == 0
     fail_msg: "{{ __verify_dns_problems | join('; ') }}"

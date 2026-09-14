@@ -1,10 +1,10 @@
 ---
 # Internal to the role: computed from its inputs, not part of its interface.
 
-# Names whose records disagree with the inventory. Three separate faults, all
-# of which break certificate renewal and only one of which is obvious:
-# a name that does not resolve, one pointing at another node, and one pointing
-# at several nodes — which makes http-01 succeed or fail by luck.
+# Names whose records disagree with the inventory: one that does not resolve,
+# and one that resolves somewhere this node is not. A name pointing at several
+# nodes is fine — the shared apex does exactly that, and dns-01 does not care
+# which node a visitor lands on.
 __verify_dns_problems: >-
   {%- set out = [] -%}
   {%- for r in __verify_dns.results -%}
@@ -14,11 +14,7 @@ __verify_dns_problems: >-
   {%-     set _ = out.append(r.item ~ ' does not resolve') -%}
   {%-   elif verify_node_address not in addrs -%}
   {%-     set _ = out.append(r.item ~ ' resolves to ' ~ (addrs | join(', '))
-                             ~ ' instead of ' ~ verify_node_address) -%}
-  {%-   elif addrs | length > 1 -%}
-  {%-     set _ = out.append(r.item ~ ' resolves to ' ~ (addrs | join(', '))
-                             ~ ' — http-01 can only be answered by one of them,'
-                             ~ ' so renewal will fail at random') -%}
+                             ~ ', which does not include ' ~ verify_node_address) -%}
   {%-   endif -%}
   {%- endfor -%}
   {{ out }}
