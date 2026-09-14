@@ -48,13 +48,9 @@ angie_proxy_timeout: 300s
 angie_access_log: false
 
 # --- Repository ------------------------------------------------------------
-# deb822_repository needs the python3-debian library on the node and fails
-# outright without it.
-angie_repo_packages:
-  - python3-debian
-
 angie_repo_key_url: https://angie.software/keys/angie-signing.gpg
 angie_repo_keyring: /usr/share/keyrings/angie-signing.gpg
+angie_repo_file: /etc/apt/sources.list.d/angie.sources
 angie_repo_base_url: https://download.angie.software/angie
 
 # Angie publishes per distribution *version*, with the codename as the suite:

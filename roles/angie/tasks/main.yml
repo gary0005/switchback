@@ -5,18 +5,6 @@
   when: not ansible_facts.keys() | list |
     intersect(angie_required_facts) == angie_required_facts
 
-# deb822_repository is implemented on top of the python3-debian library and
-# refuses to run without it. Installed explicitly rather than through the
-# module's own install_python_debian, which hides a package installation
-# inside a task that reads as configuration — and only works when the remote
-# interpreter is the system Python.
-- name: Install what the repository tasks need
-  ansible.builtin.apt:
-    name: "{{ angie_repo_packages }}"
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-
 # Into a dedicated keyring rather than /etc/apt/trusted.gpg.d: a key dropped
 # there is trusted for every repository on the system, not just this one.
 - name: Add Angie signing key
@@ -26,21 +14,22 @@
     mode: "0644"
     checksum: "{{ angie_repo_key_checksum | default(omit, true) }}"
 
-# deb822 rather than the one-line format: apt_repository is deprecated and
-# goes away in ansible-core 2.25. signed_by scopes the key to this repository
-# alone.
-- name: Add Angie repository
-  ansible.builtin.deb822_repository:
-    name: angie
-    types: [deb]
-    uris: "{{ angie_repo_uri | trim }}"
-    suites: ["{{ angie_repo_suite }}"]
-    components: [main]
-    signed_by: "{{ angie_repo_keyring }}"
-    enabled: true
-    state: present
+# A template rather than deb822_repository: that module needs python3-debian
+# on the node, installing it needs apt to refresh, and apt cannot refresh
+# while this file still points at a path that does not exist. The module
+# cannot repair a repository whose brokenness prevents the module from being
+# installed. Writing the file first breaks that circle.
+- name: Write the Angie repository
+  ansible.builtin.template:
+    src: angie.sources.j2
+    dest: "{{ angie_repo_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
 
-# deb822_repository does not refresh the cache itself, hence update_cache here.
+# update_cache here rather than on an earlier task: by this point the
+# repository file is correct, so the refresh has something valid to read.
 - name: Install Angie
   ansible.builtin.apt:
     name: angie

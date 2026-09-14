@@ -1,0 +1,16 @@
+{#- Written directly rather than through ansible.builtin.deb822_repository.
+    That module needs python3-debian on the node, and installing it needs apt
+    to refresh — which fails while this very file still points somewhere
+    broken. The module cannot fix a repository whose brokenness stops it from
+    being installed. A template has no such circle: the file is corrected
+    first, and only then does anything touch apt.
+
+    Angie publishes per distribution version with the codename as the suite:
+    .../angie/ubuntu/26.04 with Suites: resolute. -#}
+{{ ansible_managed | comment }}
+Types: deb
+URIs: {{ angie_repo_uri | trim }}
+Suites: {{ angie_repo_suite }}
+Components: main
+Signed-By: {{ angie_repo_keyring }}
+Enabled: yes

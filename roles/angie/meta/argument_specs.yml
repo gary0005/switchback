@@ -78,14 +78,6 @@ argument_specs:
             retain a record of who passed through it and when.
         type: bool
         default: false
-      angie_repo_packages:
-        description:
-          - Packages the repository tasks need. deb822_repository is built on
-            python3-debian and fails without it.
-        type: list
-        elements: str
-        default:
-          - python3-debian
       angie_repo_key_url:
         description: Where the Angie signing key is fetched from.
         type: str
@@ -105,6 +97,10 @@ argument_specs:
       angie_repo_base_url:
         description: Base URL of the Angie apt repository.
         type: str
+      angie_repo_file:
+        description: Path of the deb822 source file written for Angie.
+        type: str
+        default: /etc/apt/sources.list.d/angie.sources
       angie_repo_uri:
         description:
           - Repository URI. Angie publishes per distribution version with the

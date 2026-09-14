@@ -77,6 +77,12 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 
 **Access logging stays off.** A node should not retain a record of who passed through it and when.
 
+## Why the source file is a template
+
+`ansible.builtin.deb822_repository` would be the idiomatic choice, and it does not work here. It needs `python3-debian` on the node; installing that needs apt to refresh; and apt cannot refresh while `angie.sources` still points at a path that does not exist. The module cannot repair the repository whose brokenness prevents the module from being installed.
+
+Writing the file with `template` has no such circle: the file is corrected first, and only the task after it touches apt.
+
 ## "Repository does not have a Release file"
 
 That error reads like a signing problem and is not one — it means the path does not exist. Angie publishes per distribution **version**, with the codename as the suite: `.../angie/ubuntu/26.04` paired with `resolute`, not `.../angie/ubuntu` with `resolute`.
