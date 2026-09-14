@@ -1,7 +1,16 @@
 cf_api_token = "REPLACE_ME"
 cf_zone_id   = "REPLACE_ME"
 
-nodes = {
-  "e1" = "203.0.113.10"
-  "r1" = "198.51.100.5"
-}
+# One entry per name a node answers to. The per-node names are what chains and
+# subscriptions address; the repeated apex is the shared site, round-robined
+# across the nodes that serve it.
+records = [
+  { name = "v0.example.com", content = "203.0.113.10" },
+  { name = "v1.example.com", content = "203.0.113.11" },
+  { name = "v2.example.com", content = "203.0.113.12" },
+  { name = "v3.example.com", content = "203.0.113.13" },
+
+  { name = "example.com", content = "203.0.113.10" },
+  { name = "example.com", content = "203.0.113.12" },
+  { name = "example.com", content = "203.0.113.13" },
+]
