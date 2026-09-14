@@ -65,6 +65,10 @@ The `vpn_*` layer is not decoration. Role defaults are only in scope for hosts o
 
 ## Usage
 
+The short version is below; [docs/RUNBOOK.md](docs/RUNBOOK.md) walks through the
+same sequence with what to expect at each step, and covers day-to-day operation
+and debugging.
+
 ```bash
 pip install pre-commit && pre-commit install
 
