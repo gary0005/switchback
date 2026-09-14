@@ -15,11 +15,11 @@ dns-01 would need a key that can write to the zone, and at this registrar that k
 
 ## Why the challenge has to go to every node
 
-Let's Encrypt connects to **one** of the addresses a name resolves to. It moves on to another only when the connection itself fails — in [`va/http.go`](https://github.com/letsencrypt/boulder/blob/main/va/http.go) that is limited explicitly: *"By policy, only dial errors (not read or write errors) are eligible for fallback"*. A node that answers on port 80 without the challenge file returns 404, which is not a dial error, so the validation ends there.
+Let's Encrypt connects to **one** of the addresses a name resolves to, and for an IPv4-only name that is the only one it will ever try. From [`va/http.go`](https://github.com/letsencrypt/boulder/blob/main/va/http.go): *"If there are no v6 addrs and there are v4 addrs then use the first v4 address. There's no fallback address."* The one fallback that exists is a single IPv6-to-IPv4 switch, and only on dial errors — *"By policy, only dial errors (not read or write errors) are eligible for fallback"*.
+
+So with three A records and no AAAA, the validator picks the first address in the DNS answer and that is that. A node answering without the challenge file returns 404 and the validation ends; a node that is down ends it too.
 
 The apex resolves to three nodes. Putting the file on one of them is a coin toss, and the order of addresses in a DNS answer rotates. So the hook puts it on all of them — which is what Let's Encrypt's documentation says to do: *"If you have multiple web servers, you have to make sure the file is available on all of them."*
-
-A useful consequence: a node that is **down** during issuing does not break it. The validator gets a connection error there, and a connection error is exactly the case where it does try the next address.
 
 ## The two parts
 
@@ -129,4 +129,5 @@ If a validation fails, check in this order: does port 80 answer on every node ca
 ## Known gaps
 
 * Nothing watches expiry except Let's Encrypt's own email.
-* Issuing depends on ssh to every node carrying the name. A node that is unreachable but still answering on 80 — a firewall change, say — fails the issue rather than falling back.
+* Issuing depends on ssh to every node carrying the name.
+* **A node that is down can block issuing for a name it shares.** There is no fallback between IPv4 addresses, so if the validator picks the address of a node that is not answering, the validation fails — even though the other two are fine and hold the file. It depends on which address the DNS answer leads with, so it may work on a retry. If a node will be down for a while, drop it from that name's records until it is back.

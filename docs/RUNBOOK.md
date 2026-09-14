@@ -106,7 +106,13 @@ shred -u /tmp/vault.yml                    # rm -P on macOS
 
 **Put the vault password in a password manager.** Losing it means generating a new seed, which changes every path and every subscription link.
 
-To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
+[`ansible.cfg`](../ansible.cfg) points `vault_password_file` at `.vault_pass`, which is gitignored — put the password there and no command needs `--ask-vault-pass`:
+
+```bash
+printf '%s' 'your-vault-password' > .vault_pass && chmod 600 .vault_pass
+```
+
+The file has to exist or every command fails, including in CI, where there is no password at all. CI writes a throwaway one instead: linting and `--syntax-check` never decrypt anything, they only need the file to be there.
 
 Two values go in, and only two. `vault_seed`, which everything derives from, and `vault_acme_email`, where expiry notices go — not a secret, but personal data with no business in a committed file.
 
@@ -135,24 +141,29 @@ for n in v0 v1 v2 v3; do echo "$n: $(dig +short A $n.example.com)"; done
 dig +short A example.com
 ```
 
-## 6. First run, one node at a time
-
-Start with a node that has a single-hop test chain. It proves the whole shape works — angie, certificate, xray, egress — without depending on any other node being ready.
+## 6. First run — all nodes at once
 
 ```bash
-uv run ansible-playbook site.yml --limit v3 --skip-tags verify --ask-vault-pass
+uv run ansible-playbook site.yml --skip-tags verify
 ```
 
-`--limit` restricts the run to one node. `--skip-tags verify` leaves the checks out: this node's two-hop chains point at nodes that do not exist yet, and the check would correctly fail on them.
+**No `--limit` on the first run.** This is the one place where doing a node at a time does not work, and the reason is worth knowing.
 
-Expect a few minutes. Watch what happens around the certificate task: angie comes up on a self-signed placeholder, certbot — running here, on your machine — copies a challenge file to every node carrying each name, Let's Encrypt fetches it over port 80, and the issued certificate is installed over the placeholder. Only the first run does the placeholder dance. Then look at it yourself:
+The apex is carried by three nodes. When a certificate covering it is issued, the challenge file is copied to all three — but Let's Encrypt contacts only **one** of them, whichever address leads the DNS answer, and for an IPv4-only name it never tries another. If the node it picks has not been configured yet, nothing is listening on port 80 there and the validation fails. Running everything together means all three are up by the time any certificate is requested.
+
+`--skip-tags verify` leaves the checks out of this run: the chain checks need every node finished, and on a first run they would fail on ordering rather than on anything real.
+
+Expect a few minutes. Watch what happens around the certificate task: angie comes up on a self-signed placeholder, certbot — running here, on your machine — copies a challenge file to every node carrying each name, Let's Encrypt fetches it over port 80, and the issued certificate is installed over the placeholder. Only the first run does the placeholder dance.
+
+Then look at it yourself:
 
 ```bash
+curl -I https://v0.example.com
 curl -I https://v3.example.com
-curl -I https://example.com        # the apex, if this node serves it
+curl -I https://example.com        # the apex, whichever node answers
 ```
 
-Both should return 200 and the static site.
+All should return 200 and the static site.
 
 > **About `--check`.** Guides usually suggest a dry run first. On a *fresh*
 > node it produces a wall of false failures: packages are not installed, so the
@@ -162,28 +173,31 @@ Both should return 200 and the static site.
 ## 7. Verify
 
 ```bash
-uv run ansible-playbook site.yml --tags verify --limit v3 --ask-vault-pass
+uv run ansible-playbook site.yml --tags verify
 ```
 
-The [`verify` role](../roles/verify/README.md) does three things:
+The [`verify` role](../roles/verify/README.md) does four things:
 
 1. asserts xray holds **no** network socket — every inbound is a unix socket;
 2. asserts only 22, 80 and 443 are reachable and nftables still drops by default;
-3. starts a throwaway client and actually sends traffic through each chain, comparing the address it came out at against the chain's exit node.
+3. asserts no DNS API credential exists on the node — this design has none, and that should stay true;
+4. starts a throwaway client and actually sends traffic through each chain, comparing the address it came out at against the chain's exit node.
 
-The first two protect the property the whole design rests on: nothing reaches xray without passing through angie. The third is the only one that tells you it *works* rather than that it is configured.
+The first three protect the properties the design rests on. The fourth is the only one that tells you it *works* rather than that it is configured.
 
-With one node up, only its test chain passes, and it exits at itself. That is correct.
+It reports each chain: `v0-v2 came out at …, expected …`. This is where assumptions about which nodes can reach which get settled by measurement — including whether v2 really is unreachable from the restricted network.
 
-## 8. The remaining nodes
+## 8. After the first run
+
+From here `--limit` is fine: every node is up, so a certificate for a shared name can be validated wherever the validator lands.
 
 ```bash
-uv run ansible-playbook site.yml --limit v2 --skip-tags verify --ask-vault-pass
-uv run ansible-playbook site.yml --limit v0 --skip-tags verify --ask-vault-pass
-uv run ansible-playbook site.yml --ask-vault-pass          # everything, with checks
+uv run ansible-playbook site.yml --limit v3            # one node
+uv run ansible-playbook site.yml --tags certs          # renewals only
+uv run ansible-playbook site.yml --tags verify --limit v0
 ```
 
-The final run reports each chain: `v0-v2 came out at …, expected …`. This is where assumptions about which nodes can reach which get settled by measurement.
+The exception stays the same: if a node is **down** for a while, a certificate covering a name it shares can fail to renew, because the validator may pick its address and will not try another. Drop that node from the shared name's records until it is back.
 
 ### Taking over an unmanaged node
 
@@ -196,9 +210,9 @@ When you are ready:
 ```bash
 $EDITOR inventory/hosts.yml                  # remove it from `unmanaged`
 $EDITOR inventory/group_vars/all/main.yml    # add its test chain, e.g. v1-solo
-uv run ansible-playbook site.yml --limit v1 --skip-tags verify --ask-vault-pass
-uv run ansible-playbook site.yml --tags users --ask-vault-pass
-uv run ansible-playbook site.yml --tags verify --ask-vault-pass
+uv run ansible-playbook site.yml --limit v1 --skip-tags verify
+uv run ansible-playbook site.yml --tags users
+uv run ansible-playbook site.yml --tags verify
 ```
 
 The `users` run is what puts the newly usable chains into everyone's subscription; the `verify` run is what confirms they carry traffic. If the node should also serve the shared apex, add it to that node's `vpn_domains` and add the matching DNS record before the first command.
@@ -207,7 +221,7 @@ The `users` run is what puts the newly usable chains into everyone's subscriptio
 
 ```bash
 uv run ansible-playbook site.yml --tags subscription -v \
-  -e subscription_show_links=true --ask-vault-pass
+  -e subscription_show_links=true
 ```
 
 **The link is the credential.** Whoever holds it has access, which is why it is not printed by default. Send it over something private, not a group chat.
