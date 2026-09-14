@@ -4,8 +4,8 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terr
 
 ## Hard rules
 
-1. **Never commit a real domain, IP or token.** Inventory examples use RFC 5737 addresses and `example.com`. Real values live in a private overlay or the vault.
-2. **Never touch the node marked `vpn_managed: false`.** It carries live user traffic. Plays must exclude it structurally, not by operator memory.
+1. **Never commit a real domain, IP or token.** Committed files use RFC 5737 addresses and `example.com`. Real values live in the gitignored `inventory/host_vars/<host>/main.yml`, beside a committed `main.yml.example`, or in the vault. When adding a node, write both files.
+2. **Never touch a node in the `unmanaged` group.** It carries live user traffic under someone else's configuration. Plays exclude it by targeting `vpn:!unmanaged`, so the exclusion is structural rather than a matter of operator memory. Its peers still read its domains and chain paths from the inventory.
 3. **No traffic ever reaches xray directly from the network.** xray binds unix sockets only; angie on 443 is the single ingress, and node-to-node hops speak the same VLESS+XHTTP/TLS/443 an ordinary client speaks. Any change that opens an xray port is wrong — the censor bans direct xray flows fast.
 4. **Nothing lives in state.** Paths, ports, UUIDs, tokens all derive from `vault_seed` via `hash('sha256')` / `to_uuid`. No fact cache, no `delegate_to`, no play ordering — any play must run under `--limit`.
 
@@ -17,7 +17,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terr
 | `vpn_*` | Deployment-wide, read for *other* hosts through `hostvars`. |
 | `__*` | Role-internal: registered results, computed facts. |
 
-**Role defaults are not in `hostvars` for a host in another play.** Anything read for a peer must be a `vpn_*` name defined in inventory `group_vars`, or it comes back undefined. This is the single most common bug here — see the existing `hostvars[item]['xray_reality_priv_hex']` in `roles/xray/tasks`.
+**Role defaults are not in `hostvars` for a host in another play.** Anything read for a peer — another node's domain, a chain's transit path — must be a `vpn_*` name defined in inventory `group_vars`, or it comes back undefined. This is the single most common bug here.
 
 ## Config gotchas that cost hours
 
@@ -28,6 +28,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terr
 - `chrony` is mandatory: Reality and VLESS break on minutes of clock drift.
 - A document root that serves nothing at `/` fails the first active probe.
 - certbot: use `--cert-name` when a cert covers several names, otherwise adding a SAN silently does nothing (the `creates:` guard still matches).
+- A Jinja comment or tag directly after `{{ ansible_managed | comment }}` eats the newline it ends on and comments out the first real line. Keep computation and explanation above it.
 
 ## Tooling
 
@@ -40,7 +41,10 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). Terr
 pre-commit run --all-files
 ansible-playbook site.yml --syntax-check
 ansible-playbook site.yml --check --diff --ask-vault-pass
+ansible-playbook site.yml --tags verify --ask-vault-pass
 ```
+
+The `verify` role is the one that decides whether a change actually worked: it asserts xray holds no network listener and that every chain exits through the node it names. Run it after touching topology, angie or xray. To check templates without hosts, render them locally with a throwaway playbook that pulls the role `defaults/main.yml` in through `vars_files`.
 
 Tasks that only read (version probe, key derivation, `angie -t`) carry `check_mode: false`, or the templates downstream fail on undefined keys in `--check`. Keep that when adding read-only tasks.
 
@@ -52,3 +56,8 @@ Tasks that only read (version probe, key derivation, `angie -t`) carry `check_mo
 - Comments explain *why*, not *what*; the existing files set the density. Do not add a comment that restates the task name.
 - JSON templates build lists in Jinja and pipe them through `to_json` — never hand-assemble JSON with commas in a loop.
 - Group names are role parameters, not literals, so one role can describe more than one topology.
+
+# Git workflow
+- One commit per logical unit of work.
+- Commit messages — in English. Follow conventional commits standard.
+- **Commit to `main`. Never create a branch unless asked for one.** One person works on this repository, so a branch buys no review and costs a merge on every change. If something is risky enough to want isolating, say so and ask — do not decide it by branching.
