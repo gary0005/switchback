@@ -8,7 +8,7 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 2. **User names in `vpn_users` are labels, never people.** They are written in clear text into xray's config on every node, so the vault would hide them from this repository and from nowhere else. They also feed the UUID and token derivation, so renaming one reissues that user's access.
 3. **Never touch a node in the `unmanaged` group.** It carries live user traffic under someone else's configuration. Plays exclude it by targeting `vpn:!unmanaged`, so the exclusion is structural rather than a matter of operator memory. Its peers still read its domains and chain paths from the inventory.
 4. **No traffic ever reaches xray directly from the network.** xray binds unix sockets only; angie on 443 is the single ingress, and node-to-node hops speak the same VLESS+XHTTP/TLS/443 an ordinary client speaks. Any change that opens an xray port is wrong — the censor bans direct xray flows fast.
-5. **Nothing lives in state.** Paths, ports, UUIDs, tokens all derive from `vault_seed` via `hash('sha256')` / `to_uuid`. No fact cache, no `delegate_to`, no play ordering — any play must run under `--limit`.
+5. **Nothing lives in state.** Paths, ports, UUIDs, tokens all derive from `vault_seed` via `hash('sha256')` / `to_uuid`. No fact cache, no cross-host `delegate_to`, no play ordering — any play must run under `--limit`. (The acme role delegates to *localhost*, which is a different thing: it is where certbot and the DNS key live, and it depends on no other node.)
 
 ## Variable naming
 
@@ -30,10 +30,11 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 - A document root that serves nothing at `/` fails the first active probe.
 - certbot: use `--cert-name` when a cert covers several names, otherwise adding a SAN silently does nothing (the `creates:` guard still matches).
 - A Jinja comment or tag directly after `{{ ansible_managed | comment }}` eats the newline it ends on and comments out the first real line. Keep computation and explanation above it.
-- dns-01 is answered by `roles/acme/templates/dns-hook.sh.j2`, a hook in this repo rather than a third-party plugin — it runs as root with a key that can rewrite the zone. `PUT /v1/dns/records/{zone}` is **additive** on this API; do not "read, modify, write" or you will replace the zone. Names are relative to it: apex is `_acme-challenge`, a subdomain is `_acme-challenge.<sub>`.
+- dns-01 is answered by `roles/acme/templates/dns-hook.sh.j2`, a hook in this repo rather than a third-party plugin, running on the controller beside certbot. `PUT /v1/dns/records/{zone}` is **additive** on this API; do not "read, modify, write" or you will replace the zone. Names are relative to it: apex is `_acme-challenge`, a subdomain is `_acme-challenge.<sub>`.
 - The hook polls until its TXT is visible and exits non-zero if it never is. Never replace that with a fixed sleep: a challenge checked too early is a failed issue and a spent rate-limit slot.
 - acme runs before angie, which will not start without a certificate. dns-01 needs nothing from angie, so keep it that way — no placeholder, no symlink, no second pass.
-- Every node holds the zone credential. That is the deployment's largest risk, accepted so the apex can span nodes. Anything that widens that key's scope needs a better reason than convenience.
+- **The DNS credential never goes on a node.** It is account-wide at the registrar and cannot be scoped down, so certbot runs on the controller (`delegate_to: localhost`, `become: false`, under `acme_local_dir`) and nodes get only the two PEM files. `verify` fails if such a key appears on a node — do not "simplify" by moving issuing back onto them.
+- The price of that is renewal only happening when the playbook runs. `acme_renew_days` is 45 for slack; do not lower it without adding something that watches expiry.
 
 ## Tooling
 

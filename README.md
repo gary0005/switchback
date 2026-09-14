@@ -33,7 +33,7 @@ Adding a node is one entry in `hosts.yml`, one `host_vars` file, and the chains 
 
 **Tiers are enforced server side.** A user whose tier excludes single-hop chains does not merely lack those links; their UUID is absent from those inbounds.
 
-**Certificates come over dns-01.** A node proves it owns a name by writing a TXT record through the registrar's API, not by being the one the name resolves to — so the apex can point at several nodes at once, and a certificate is issued before the domain takes any traffic. The price is a credential on every node that can write to the zone; it is the largest single risk here, and the [acme role](roles/acme/README.md) says why it was accepted.
+**Certificates come over dns-01, issued on the controller.** Ownership is proven by writing a TXT record rather than by being the node a name resolves to, so the apex can point at several nodes at once. The key that writes it is account-wide at the registrar and cannot be scoped down, so it never goes near a node: certbot runs on your machine and only the resulting files are shipped. A compromised node leaks its own certificate and nothing else — and `--tags verify` fails if that key ever turns up on one.
 
 **Unmanaged nodes are excluded structurally.** A node in the `unmanaged` group is skipped by every play — it carries live traffic under someone else's configuration. Its peers still read its domain and paths out of the inventory, and chains touching it stay out of subscriptions until it is taken over, because nothing is listening at the far end yet.
 
@@ -117,6 +117,7 @@ The last play checks what the first one built: it asserts the node exposes nothi
 | Take over an unmanaged node | remove it from the `unmanaged` group, run, then `--tags users` |
 | Rotate every path and token | change `vault_seed` |
 | Change a domain | edit `host_vars/<host>/main.yml`, then the record at the registrar |
+| Renew certificates | `--tags certs`, monthly — nothing renews on its own |
 | Check without changing | `--tags verify` |
 | Print subscription links | `--tags subscription -v -e subscription_show_links=true` |
 
@@ -132,9 +133,9 @@ Each role can be run or skipped by its own name. Three purpose tags are complete
 
 **Never commit an unencrypted vault.** A pre-commit hook refuses any `vault.yml` that does not start with `$ANSIBLE_VAULT`, and `detect-secrets` and `gitleaks` run beside it; the same checks run in CI.
 
-**The DNS credential is the sharpest thing here.** Every node holds a key that can write to the zone, because that is how dns-01 is answered. A node that is broken into can issue a certificate for any name in the domain. Scope the key to DNS writes alone, and rotate it if a node is ever lost.
+**The DNS credential never reaches a node.** It can write to every domain in the registrar account — that scope cannot be narrowed — so certbot runs on the controller and nodes receive only `fullchain.pem` and `privkey.pem`. `--tags verify` asserts no node is holding it.
 
-**The vault holds four values:** `vault_seed`, which everything derives from; `vault_acme_email`, personal data rather than a secret; and the zone name with its API key and secret.
+**The vault holds four values:** `vault_seed`, which everything derives from; `vault_acme_email`, personal data rather than a secret; and the zone name with its API key and secret. They are used on your machine, not on the servers.
 
 **Domains are not secrets, but they are not public either.** Everything committed here uses `example.com` and RFC 5737 addresses: real addresses and domains live in `host_vars/<host>/main.yml`, which is gitignored, next to the committed `main.yml.example`. Back those files up somewhere — they are not in the repository, and losing them means reconstructing the inventory by hand.
 
@@ -157,6 +158,8 @@ Everything in this repository is English except the user-facing subscription pag
 **Clock accuracy.** VLESS depends on it; a couple of minutes of drift breaks the handshake. `chrony` is installed by the `common` role for that reason, not for tidiness.
 
 **A challenge record that never propagates.** The acme hook polls until its TXT is visible and fails if it is not, rather than letting Let's Encrypt look too early and spending a rate-limit slot. If a zone is slow, raise `acme_dns_check_tries`.
+
+**Forgetting to run the playbook.** Nothing renews unattended: certificates are issued on your machine, so an expiry nobody acts on is an outage. `acme_renew_days` is 45, and Let's Encrypt emails `acme_email` — but a monthly `--tags certs` is what actually keeps it alive.
 
 **A non-empty document root.** The site under `/var/www/site` is not a decoration — a domain serving nothing at `/` fails the first active probe.
 
@@ -181,7 +184,8 @@ There is no Molecule coverage yet. See "Known gaps".
 * `Subscription-Userinfo` is not populated; doing so needs the xray stats API and a small collector.
 * Revoking a user does not delete their already-rendered subscription file; remove it from `/var/www/sub` by hand.
 * The `website` role adds and updates files but does not prune ones deleted from the source.
-* No monitoring beyond `--tags verify` on demand. Angie can expose `/status` as JSON — worth wiring up a node_exporter and an alert on certificate expiry.
+* No monitoring beyond `--tags verify` on demand, and nothing watches certificate expiry except Let's Encrypt's own email. Angie can expose `/status` as JSON — worth wiring up a node_exporter and an expiry alert.
+* Certificate renewal depends on someone running the playbook; see the [acme role](roles/acme/README.md).
 * DNS is not code. `--tags verify` catches a record that disagrees with the inventory, but nothing creates the records for you.
 * Concurrent issuing across nodes sharing the apex is expected to work but has not been exercised on a slow zone; if it turns flaky, issue with `--limit`.
 * The live check leans on an external echo service (`verify_echo_url`) to learn the egress address.

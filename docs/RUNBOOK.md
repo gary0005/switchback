@@ -23,8 +23,11 @@ One property matters more than the rest: **everything derives from one secret.**
 ```bash
 cd switchback
 pip install pre-commit && pre-commit install
+brew install certbot        # apt install certbot on Debian or Ubuntu
 uv run ansible --version
 ```
+
+**certbot belongs on this machine, not on the servers.** Certificates are issued here and only the files are shipped out, so that no node ever holds the DNS key — see [roles/acme/README.md](../roles/acme/README.md).
 
 Every command below is `uv run ansible-…`. `.venv/bin/ansible-…` is the same thing if you prefer.
 
@@ -105,9 +108,9 @@ shred -u /tmp/vault.yml                    # rm -P on macOS
 
 To stop typing it on every run, write it to `.vault_pass` (gitignored) and uncomment `vault_password_file` in [`ansible.cfg`](../ansible.cfg). Then drop `--ask-vault-pass` from the commands below.
 
-Four values go in. `vault_seed`, which everything derives from. `vault_acme_email`, where expiry notices go — not a secret, but personal data with no business in a committed file. And `vault_dns_zone` with `vault_spaceship_api_key` and `vault_spaceship_api_secret`: certificates come over dns-01, so each node writes its own challenge record into the zone.
+Four values go in. `vault_seed`, which everything derives from. `vault_acme_email`, where expiry notices go — not a secret, but personal data with no business in a committed file. And `vault_dns_zone` with `vault_spaceship_api_key` and `vault_spaceship_api_secret`, which certbot uses to answer the dns-01 challenge.
 
-**Create the API key in Spaceship's API Manager**, and scope it to DNS writes and nothing else. This is the sharpest thing in the deployment: every node holds it, and a node that is broken into can issue a certificate for any name in the domain. That is the price of the shared apex — see [roles/acme/README.md](../roles/acme/README.md).
+**Create the API key in Spaceship's API Manager** with the `dnsrecords:write` scope. Two things to know about it: that scope covers **every domain in the account** — it cannot be narrowed to one domain or one record type — and the key is used **on this machine only**. Nodes never receive it, and `--tags verify` fails if one ever does. Because the scope cannot be narrowed, it is worth keeping this domain in an account of its own.
 
 ## 5. DNS
 
@@ -142,7 +145,7 @@ uv run ansible-playbook site.yml --limit v3 --skip-tags verify --ask-vault-pass
 
 `--limit` restricts the run to one node. `--skip-tags verify` leaves the checks out: this node's two-hop chains point at nodes that do not exist yet, and the check would correctly fail on them.
 
-Expect a few minutes, most of it certbot. For each name it writes a TXT record through the Spaceship API, waits until a public resolver can see it, then asks Let's Encrypt to check — so a slow zone shows up as the run sitting quietly on the certificate task. If it gives up, raise `acme_dns_check_tries`. Then look at it yourself:
+Expect a few minutes, most of it certbot — running here, on your machine. For each name it writes a TXT record through the Spaceship API, waits until a public resolver can see it, then asks Let's Encrypt to check, and finally the certificate is copied to the node. A slow zone shows up as the run sitting quietly on the certificate task; if it gives up, raise `acme_dns_check_tries`. Then look at it yourself:
 
 ```bash
 curl -I https://v3.example.com
@@ -224,6 +227,7 @@ Give people the link from whichever node stays reachable for them.
 | Add a chain | an entry under `vpn_chains`, then a full run |
 | Add a node | `hosts.yml`, its `host_vars` pair, its chains, a DNS record |
 | Change the site | edit [`roles/website/files/site/`](../roles/website/files/site/), then `--tags website` |
+| Renew certificates | `--tags certs`, monthly — **nothing renews on its own** |
 | Check nothing changed underneath you | `--tags verify` |
 | Rotate everything | change `vault_seed` — every path and link changes with it |
 
