@@ -10,6 +10,8 @@ Ansible that builds a multi-hop Xray deployment fronted by Angie (h2 + h3). DNS 
 4. **No traffic ever reaches xray directly from the network.** xray binds unix sockets only; angie on 443 is the single ingress, and node-to-node hops speak the same VLESS+XHTTP/TLS/443 an ordinary client speaks. Any change that opens an xray port is wrong — the censor bans direct xray flows fast.
 5. **Nothing lives in state.** Paths, ports, UUIDs, tokens all derive from `vault_seed` via `hash('sha256')` / `to_uuid`. No fact cache, no cross-host `delegate_to`, no play ordering — any play must run under `--limit`. (The acme role delegates to *localhost*, which is a different thing: it is where certbot and the DNS key live, and it depends on no other node.)
 
+A chain can carry `blocked: true` when something outside the deployment drops that route. It stays configured and stays dialled by `verify`, but never fails the run and never reaches subscriptions. `vpn_chains_checkable` is everything configured at both ends; `vpn_chains_ready` is that minus blocked, and is what users get.
+
 ## Variable naming
 
 | Prefix | Meaning |

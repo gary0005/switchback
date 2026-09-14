@@ -85,11 +85,18 @@ argument_specs:
         type: str
       verify_chains:
         description:
-          - Chains to check - normally vpn_chains_ready. A chain ending on an
-            unmanaged node has nothing listening, and failing on it would
-            report a deliberate gap as a fault.
+          - Chains to dial - normally vpn_chains_checkable, which is every
+            chain configured at both ends. A chain ending on an unmanaged node
+            has nothing listening, so it is left out.
         type: list
         elements: dict
+      verify_blocked_chains:
+        description:
+          - Names of chains known not to carry traffic for reasons outside
+            this deployment. They are still dialled and reported, so the day a
+            route comes back is visible, but they do not fail the run.
+        type: list
+        elements: str
       verify_chain_data:
         description:
           - Per-chain derived values keyed by chain name. Computed in the

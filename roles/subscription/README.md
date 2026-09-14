@@ -17,7 +17,7 @@ Which chains a user gets follows from `subscription_tier_kinds`. That policy is 
 
 ## Pending chains are not published
 
-`subscription_chains` defaults to `vpn_chains_ready`, which excludes any chain touching an unmanaged node. Such a chain has nothing listening on the path it would dial, so publishing it would hand out a link that cannot work. It appears in subscriptions the run after that node is taken over.
+`subscription_chains` defaults to `vpn_chains_ready`, which excludes any chain touching an unmanaged node, and any chain marked `blocked: true` — one known not to carry traffic because something between those two nodes drops it. Such a chain has nothing listening on the path it would dial, so publishing it would hand out a link that cannot work. It appears in subscriptions the run after that node is taken over.
 
 ## Names are labels
 

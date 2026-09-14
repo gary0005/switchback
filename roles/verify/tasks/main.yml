@@ -214,7 +214,8 @@
       ansible.builtin.debug:
         msg: >-
           {{ item.item }}: {{ (item.stdout | trim) | default('no answer', true) }}
-          (expected {{ hostvars[verify_chain_data[item.item]['exit']]['vpn_egress_ip'] }})
+          (expected {{ hostvars[verify_chain_data[item.item]['exit']]['vpn_egress_ip'] }}){{
+          ' — known blocked, not a failure' if item.item in verify_blocked_chains else '' }}
       loop: "{{ __verify_probes.results }}"
       loop_control:
         label: "{{ item.item }}"

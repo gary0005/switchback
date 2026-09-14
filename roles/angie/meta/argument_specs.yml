@@ -114,7 +114,9 @@ argument_specs:
       angie_chains:
         description:
           - Chain declaration, as described by the xray role. angie serves a
-            location for each chain naming this node as via or as exit.
+            location for each chain naming this node as via or as exit,
+            including chains marked blocked - the configuration is in place
+            for the day the route returns.
         type: list
         elements: dict
       angie_socket_dir:

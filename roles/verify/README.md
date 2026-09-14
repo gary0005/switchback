@@ -38,6 +38,12 @@ The probe presents `vpn_probe_uuid`, which the xray role adds to every user-faci
 
 Skipped under `--check`, which cannot run a client. Turn it off with `verify_live=false` to run the structural checks alone.
 
+## Chains that are known to be blocked
+
+Sometimes a route simply does not exist — a network between two nodes drops the connection, and no amount of configuration fixes it. Mark such a chain `blocked: true` in `vpn_chains` and it stays configured and stays dialled, but stops failing the run; the report still shows what it did, which is how you notice the day it starts working again.
+
+It also drops out of `vpn_chains_ready`, so users are not handed a link that cannot work.
+
 ## When a chain check fails
 
 The report shows what each chain answered before the assertion fires, so read that first:
@@ -59,7 +65,8 @@ Full specification with types and defaults: [`meta/argument_specs.yml`](meta/arg
 | `verify_no_credential_patterns` | `[*.env, *dns*api*, *credentials*]` | What counts as one |
 | `verify_domains` | `{{ vpn_domains }}` | Names that must resolve to this node, among others |
 | `verify_node_address` | `{{ ansible_host }}` | The address that must be among their records |
-| `verify_chains` | `{{ vpn_chains_ready }}` | Chains to check |
+| `verify_chains` | `{{ vpn_chains_checkable }}` | Chains to dial |
+| `verify_blocked_chains` | `{{ vpn_chains_blocked }}` | Dialled and reported, but never a failure |
 | `verify_chain_data` | `{{ vpn_chain_data }}` | Per-chain paths and exits |
 | `verify_probe_uuid` | `{{ vpn_probe_uuid }}` | Identity the probe presents |
 | `verify_probe_port` | `10808` | Loopback port the throwaway client uses |

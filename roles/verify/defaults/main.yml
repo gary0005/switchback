@@ -65,10 +65,11 @@ verify_domains: "{{ vpn_domains }}"
 verify_node_address: "{{ ansible_host }}"
 
 # --- Topology --------------------------------------------------------------
-# Only chains configured at both ends: one ending on an unmanaged node has
-# nothing listening, and failing on that would report a deliberate gap as a
-# fault.
-verify_chains: "{{ vpn_chains_ready }}"
+# Every chain configured at both ends, including ones known to be blocked:
+# they are dialled and reported so the day a route comes back is visible,
+# but they do not fail the run.
+verify_chains: "{{ vpn_chains_checkable }}"
+verify_blocked_chains: "{{ vpn_chains_blocked }}"
 verify_chain_data: "{{ vpn_chain_data }}"
 
 # --- Deployment values this role reads for its own host --------------------

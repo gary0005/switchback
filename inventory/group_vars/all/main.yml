@@ -19,7 +19,11 @@
 vpn_chains:
   # Two hops out of the domestic node.
   - { name: v0-v1, via: v0, exit: v1 }
-  - { name: v0-v2, via: v0, exit: v2 }
+  # Measured, not assumed: from v0, TCP/443 to v2 times out, while the same
+  # request from v3 answers in 150 ms. The chain stays declared so it is in
+  # place the day that changes — `--tags verify` still dials it and reports
+  # what happened, but does not fail the run over it.
+  - { name: v0-v2, via: v0, exit: v2, blocked: true }
   - { name: v0-v3, via: v0, exit: v3 }
   # Two hops between offshore nodes.
   - { name: v1-v2, via: v1, exit: v2 }
@@ -34,15 +38,28 @@ vpn_chains:
   - { name: v2-solo, via: v2, exit: v2 }
   - { name: v3-solo, via: v3, exit: v3 }
 
-# Chains whose every end this repository actually configures. A chain that
-# terminates on an unmanaged node has no inbound waiting for it, so publishing
-# it would hand users a link that cannot work. Roles use this list; `vpn_chains`
-# stays the full declaration so nothing is lost when the node is taken over.
-vpn_chains_ready: >-
+# Chains this repository configures at both ends. A chain terminating on an
+# unmanaged node has no inbound waiting for it, so it cannot work yet — but it
+# is still worth dialling, which is what this list is for.
+vpn_chains_checkable: >-
   {{ vpn_chains
      | rejectattr('via', 'in', groups['unmanaged'] | default([]))
      | rejectattr('exit', 'in', groups['unmanaged'] | default([]))
      | list }}
+
+# Chains known not to carry traffic for reasons outside this deployment — a
+# network between two nodes that drops the connection. Marked `blocked: true`
+# above. They stay configured, stay checked, and stay out of subscriptions:
+# a link that cannot work is worse than a missing one. Clear the flag when the
+# route comes back and they reappear on the next --tags users.
+vpn_chains_blocked: >-
+  {{ vpn_chains | selectattr('blocked', 'defined') | selectattr('blocked')
+     | map(attribute='name') | list }}
+
+# What users are given: configured at both ends, and not known to be blocked.
+vpn_chains_ready: >-
+  {{ vpn_chains_checkable
+     | rejectattr('name', 'in', vpn_chains_blocked) | list }}
 
 # ---------------------------------------------------------------------------
 # Deterministic derivation

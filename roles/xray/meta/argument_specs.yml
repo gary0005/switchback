@@ -80,6 +80,14 @@ argument_specs:
             description: Inventory hostname egressing to the internet.
             type: str
             required: true
+          blocked:
+            description:
+              - Set when something outside this deployment drops the route
+                between the two nodes. The chain is still configured here, so
+                it works the moment that changes; it is only kept out of
+                subscriptions and out of the checks' failure condition.
+            type: bool
+            default: false
       xray_chain_data:
         description:
           - Per-chain derived values keyed by chain name, each carrying kind,
