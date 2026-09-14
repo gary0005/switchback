@@ -19,6 +19,10 @@ Which chains a user gets follows from `subscription_tier_kinds`. That policy is 
 
 `subscription_chains` defaults to `vpn_chains_ready`, which excludes any chain touching an unmanaged node. Such a chain has nothing listening on the path it would dial, so publishing it would hand out a link that cannot work. It appears in subscriptions the run after that node is taken over.
 
+## Names are labels
+
+`name` identifies a user to the deployment and nothing more: it derives their UUID and token, and tags them in xray's config. It is not a person's name, and should not be — the label lands in clear text on every node. Who is behind `u-a` is yours to remember.
+
 ## The filename is the credential
 
 The token in the path *is* the user's access. That is why `subscription_show_links` defaults to `false` — printing a link writes a credential into the run log and into any CI system that captures it.

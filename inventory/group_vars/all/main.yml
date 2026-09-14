@@ -105,10 +105,22 @@ vpn_socket_dir: /run/xray
 # without the `test` kind is absent from those inbounds' client lists, not
 # merely missing the links from their subscription file.
 #
+# `name` is a label, not a person. It is used to tell users apart, to derive
+# their UUID and subscription token, and to tag the client in xray's config —
+# none of which needs anyone's actual name. Keep it functional, because the
+# label is written in clear text to /usr/local/etc/xray/config.json on every
+# node and appears in the output of a run: putting it in the vault would hide
+# it from this repository and from nowhere else. Who is behind which label
+# belongs wherever you keep the vault password and the subscription links.
+#
+# Choose a label once. It feeds the derivation, so renaming one reissues that
+# user's UUID and link exactly as bumping `rot` does.
+#
 # rot — rotation counter: bump it to reissue this user's UUID and link.
 vpn_users:
-  - { name: boss, tier: all, rot: 1 }
-  - { name: alice, tier: main, rot: 1 }
+  - { name: ops, tier: all, rot: 1 }    # whoever debugs the deployment
+  - { name: lead, tier: all, rot: 1 }   # test chains as well as the real ones
+  - { name: u-a, tier: main, rot: 1 }   # working chains only
 
 # Which chain kinds each tier may use. `test` chains are single-hop and exist
 # to isolate faults, so they go to whoever debugs the deployment, not to users.
