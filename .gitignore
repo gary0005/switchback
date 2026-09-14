@@ -1,14 +1,18 @@
+# macOS system file
 .DS_Store
-.vault_pass
-*.retry
+
+# Python cache and virtual environment
 .venv/
 __pycache__/
-# Collections installed from requirements.yml; pinned there, not vendored.
+
+*.retry
+
+# Collections ansible-galaxy installs here; nothing in this repo needs any.
 .ansible/
-terraform/.terraform/
-terraform/*.tfstate*
-terraform/terraform.tfvars
+
 inventory/host_vars/v0/main.yml
 inventory/host_vars/v1/main.yml
 inventory/host_vars/v2/main.yml
 inventory/host_vars/v3/main.yml
+inventory/group_vars/vault.yml
+.vault_pass

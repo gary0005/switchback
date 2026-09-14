@@ -77,6 +77,30 @@
          | difference(verify_expected_ports) | list }}
 
 # ---------------------------------------------------------------------------
+# DNS — the zone and the inventory still agree
+# ---------------------------------------------------------------------------
+# Nothing else catches a record drifting away from vpn_domains: the zone is
+# maintained by hand. A wrong record surfaces as certbot failing to renew,
+# sixty days later, so it is worth asserting up front.
+- name: Resolve every name this node answers to
+  ansible.builtin.command: "getent ahostsv4 {{ item }}"
+  register: __verify_dns
+  changed_when: false
+  failed_when: false
+  check_mode: false
+  loop: "{{ verify_domains }}"
+  loop_control:
+    label: "{{ item }}"
+
+- name: Assert every name points at this node and nowhere else
+  ansible.builtin.assert:
+    that: __verify_dns_problems | length == 0
+    fail_msg: "{{ __verify_dns_problems | join('; ') }}"
+    success_msg: >-
+      {{ verify_domains | join(', ') }} resolve to {{ verify_node_address }}.
+    quiet: true
+
+# ---------------------------------------------------------------------------
 # Wiring checks — angie and xray agree on where the sockets are
 # ---------------------------------------------------------------------------
 - name: Check the unix socket of every path this node serves

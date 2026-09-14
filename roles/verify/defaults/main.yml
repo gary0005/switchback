@@ -37,6 +37,16 @@ verify_probe_dir: /var/cache/xray-probe
 verify_probe_startup: 10
 verify_probe_timeout: 25
 
+# --- DNS -------------------------------------------------------------------
+# There is no Terraform holding the zone, so nothing else notices when the
+# records and the inventory disagree. This check does, and it checks what
+# clients and Let's Encrypt actually see rather than what some state file
+# claims. Every name a node answers to has to resolve to that node, and to
+# exactly one address: http-01 is answered by whichever node the name points
+# at, so a name on two addresses validates on one of them at random.
+verify_domains: "{{ vpn_domains }}"
+verify_node_address: "{{ ansible_host }}"
+
 # --- Topology --------------------------------------------------------------
 # Only chains configured at both ends: one ending on an unmanaged node has
 # nothing listening, and failing on that would report a deliberate gap as a

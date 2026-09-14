@@ -4,9 +4,10 @@ argument_specs:
     short_description: Check that the node is shaped correctly and its chains work.
     description:
       - Runs two kinds of check. The structural ones assert that xray holds no
-        network listener, that only the expected ports are reachable, and that
-        the firewall still drops by default - the properties that keep traffic
-        from reaching xray without passing through angie.
+        network listener, that only the expected ports are reachable, that the
+        firewall still drops by default, and that DNS still agrees with the
+        inventory - the properties that keep traffic from reaching xray without
+        passing through angie, and certificates renewable.
       - The live ones dial each chain the node fronts with a throwaway client
         built exactly like a user's, and compare the address the request came
         out at against the chain's exit node. Everything else can pass on a
@@ -59,6 +60,18 @@ argument_specs:
             two TLS handshakes before the first byte.
         type: int
         default: 25
+      verify_domains:
+        description:
+          - Names this node answers to. Each must resolve to this node and to
+            exactly one address, or certificate renewal breaks - silently, and
+            not until the current certificate expires.
+        type: list
+        elements: str
+      verify_node_address:
+        description:
+          - Address every one of verify_domains has to resolve to. Defaults to
+            ansible_host.
+        type: str
       verify_chains:
         description:
           - Chains to check - normally vpn_chains_ready. A chain ending on an

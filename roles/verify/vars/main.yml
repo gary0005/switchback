@@ -1,6 +1,28 @@
 ---
 # Internal to the role: computed from its inputs, not part of its interface.
 
+# Names whose records disagree with the inventory. Three separate faults, all
+# of which break certificate renewal and only one of which is obvious:
+# a name that does not resolve, one pointing at another node, and one pointing
+# at several nodes — which makes http-01 succeed or fail by luck.
+__verify_dns_problems: >-
+  {%- set out = [] -%}
+  {%- for r in __verify_dns.results -%}
+  {%-   set addrs = r.stdout | default('')
+          | regex_findall('^(\d+\.\d+\.\d+\.\d+)', multiline=True) | unique | list -%}
+  {%-   if addrs | length == 0 -%}
+  {%-     set _ = out.append(r.item ~ ' does not resolve') -%}
+  {%-   elif verify_node_address not in addrs -%}
+  {%-     set _ = out.append(r.item ~ ' resolves to ' ~ (addrs | join(', '))
+                             ~ ' instead of ' ~ verify_node_address) -%}
+  {%-   elif addrs | length > 1 -%}
+  {%-     set _ = out.append(r.item ~ ' resolves to ' ~ (addrs | join(', '))
+                             ~ ' — http-01 can only be answered by one of them,'
+                             ~ ' so renewal will fail at random') -%}
+  {%-   endif -%}
+  {%- endfor -%}
+  {{ out }}
+
 # Every socket angie proxies to on this node — the user-facing path of each
 # chain it fronts, and the transit path of each chain it terminates. Kept in
 # step with the angie template by construction, since both derive the names
